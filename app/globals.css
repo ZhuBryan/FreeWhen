@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* System font stack — no next/font/google (build has no network to Google). */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: theme("colors.ink.DEFAULT");
+  background: #fffdf7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Thin, unobtrusive scrollbar for the horizontally-scrolling grid on mobile. */
+.grid-scroll {
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.grid-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.grid-scroll::-webkit-scrollbar-thumb {
+  background: #e7e5e4;
+  border-radius: 9999px;
+}
