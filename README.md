@@ -1,11 +1,13 @@
 # FreeWhen
 
-**Find when your friends are actually free.** A tiny schedule-overlap web app for
-University of Waterloo friend groups. Everyone pastes their Quest class schedule
-once; FreeWhen overlaps them into a weekly heatmap and lists the best times when
-the whole group is free — no accounts, no back-and-forth texting.
+**Find when your friends are actually free.** A tiny schedule-overlap web app
+for student friend groups. Everyone pastes their class schedule once; FreeWhen
+overlaps them into a weekly heatmap and lists the best times when the group is
+free — no accounts, no back-and-forth texting.
 
-> Built for UW students · not affiliated with the University of Waterloo.
+> Built at the University of Waterloo (the schedule parser understands UW
+> Quest), but calendar import, plain-text parsing, and manual entry work for
+> any school · not affiliated with the University of Waterloo.
 
 ## How it works
 
@@ -27,15 +29,43 @@ the whole group is free — no accounts, no back-and-forth texting.
      wall-clock times; all-day events are skipped.
    - **Enter manually** — add busy times by hand with day toggles + 30-min time
      pickers.
-3. **See the overlap** — a Mon–Sun, 8 AM–10 PM heatmap (green = more people
-   free) plus the top free windows, e.g. *"Friday · 2:30–5:30 PM"*.
+3. **See the overlap** — a Mon–Sun heatmap (green = more people free) plus the
+   top free windows, e.g. *"Friday · 2:30–5:30 PM"*.
+
+**Viewing window.** The heatmap defaults to 8 AM–10 PM but the hours are
+adjustable per group (down to midnight for night owls); the choice is
+remembered in `localStorage`. Free-window search runs over the same window.
+
+**"At least N of us."** By default the best-times list only counts windows
+where *everyone* is free. With 3+ members a selector relaxes that to "at least
+N of M" — a single sweep per day tracks the running minimum head-count, so
+each window reports the number of people *guaranteed* free for its whole
+span, not just its best half-hour.
 
 **Week navigation & one-time events.** The group page shows one specific week
-at a time (defaulting to the current week) with ‹ › navigation and a "This
-week" reset. Weekly-recurring blocks apply to every week; dated one-off blocks
+at a time (defaulting to the current week) with ‹ › navigation and a "Today"
+reset. Weekly-recurring blocks apply to every week; dated one-off blocks
 (e.g. an imported dentist appointment) only make someone busy in the week they
 actually fall in — so "who's free next Friday?" accounts for one-time plans,
 not just class patterns.
+
+**Event planner.** "Plan something" scans an arbitrary date window (from any
+start date, 7/14/30 days ahead) for days that fit an event: pick a time of day
+(mornings / afternoons / evenings / any), a minimum duration, and how many
+people need to make it. Each date is evaluated against its own effective
+blocks (recurring + that day's one-offs), and qualifying days list the best
+window, who's guaranteed free for all of it, and runner-up windows. Results
+can be copied as a group-chat-ready summary or exported per window as an
+`.ics` download / Google Calendar link (`lib/calendar.ts`, floating local
+times per RFC 5545).
+
+**Live sync.** Group pages subscribe to a Supabase Realtime broadcast channel
+(`group:<slug>`); after every mutation the API routes fire a broadcast over
+Realtime's REST endpoint, so every open copy of the page refreshes the moment
+anyone saves or removes a schedule — a "live" indicator shows when the socket
+is connected. Requires the two optional `NEXT_PUBLIC_SUPABASE_*` env vars
+(anon key only; the database is still reachable exclusively through
+server-side routes). Without them the app degrades to refetch-on-focus.
 
 No login. A creator token (for the group) and a per-member edit token are stored
 in the browser's `localStorage`; they are the only way to remove members. Tokens
@@ -87,14 +117,18 @@ npm run lint     # next lint
    `groups` and `members` tables. (RLS is intentionally left off — all access is
    server-side with the service role key.)
 3. Open **Project Settings → API** and copy:
-   - **Project URL** → `SUPABASE_URL`
+   - **Project URL** → `SUPABASE_URL` (and `NEXT_PUBLIC_SUPABASE_URL`)
    - **service_role** secret → `SUPABASE_SERVICE_ROLE_KEY`
+   - **anon / public** key → `NEXT_PUBLIC_SUPABASE_ANON_KEY` (optional — live sync)
 4. Put them in `.env.local`:
 
 ```dotenv
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+# optional — enables live sync
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key
 ```
 
 > ⚠️ The service role key bypasses row-level security. Keep it server-side only —
@@ -109,6 +143,8 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `NEXT_PUBLIC_SITE_URL` → your production URL, e.g. `https://freewhen.vercel.app`
      (used to build shareable links).
+   - `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` → optional,
+     enables live sync (anon key only — never the service role key).
 3. Deploy. Re-deploy after changing env vars.
 
 ## How the Quest parser works
@@ -135,3 +171,12 @@ view) — tabs, newlines, headers, and junk — and returns
 
 Tests live in `lib/__tests__/parseQuest.test.ts` and cover a clean tab-separated
 schedule, a newline-mangled version of it, and a schedule with TBA/online rows.
+
+## Using it at another university
+
+Only the Quest parser is UW-specific. Everything else — `.ics` import, the
+generic day+time text parser, manual entry, and all of the overlap math — is
+school-agnostic. Each importer is a standalone pure-TS module in `lib/`
+(`parseQuest.ts`, `parseIcs.ts`, `parseGeneric.ts`) returning the same
+`Block[]` shape, so supporting another registrar's schedule format means
+adding one parser file and one tab in `AddScheduleFlow`.

@@ -33,7 +33,7 @@ export default function ShareButton({ slug }: { slug: string }) {
     <button
       type="button"
       onClick={copy}
-      className="inline-flex items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-ink transition hover:border-gold-400 hover:bg-gold-50"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink transition hover:border-stone-500"
     >
       {copied ? "Copied!" : "Share link"}
     </button>

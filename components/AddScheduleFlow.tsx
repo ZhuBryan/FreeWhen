@@ -196,7 +196,7 @@ export default function AddScheduleFlow({
   }
 
   return (
-    <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-stone-200 bg-white p-4">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-ink">Add your schedule</h3>
         <button
@@ -269,7 +269,7 @@ export default function AddScheduleFlow({
                 </p>
               ) : usingGeneric ? (
                 <>
-                  <div className="mb-2 rounded-lg border border-gold-200 bg-gold-50 px-2 py-1 text-xs font-medium text-gold-700">
+                  <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
                     Parsed as generic schedule text
                   </div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
@@ -317,7 +317,7 @@ export default function AddScheduleFlow({
               )}
 
               {!usingGeneric && parsed.warnings.length > 0 && (
-                <div className="mt-3 rounded-lg border border-gold-200 bg-gold-50 p-2 text-xs text-gold-700">
+                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                   <span className="font-semibold">Heads up:</span>
                   <ul className="mt-1 list-disc pl-4">
                     {parsed.warnings.slice(0, 4).map((w, i) => (
@@ -432,7 +432,7 @@ export default function AddScheduleFlow({
               )}
 
               {icsResult.warnings.length > 0 && (
-                <div className="mt-3 rounded-lg border border-gold-200 bg-gold-50 p-2 text-xs text-gold-700">
+                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                   <span className="font-semibold">Heads up:</span>
                   <ul className="mt-1 list-disc pl-4">
                     {icsResult.warnings.slice(0, 4).map((w, i) => (
@@ -597,6 +597,13 @@ export default function AddScheduleFlow({
       >
         {saving ? "Saving…" : "Save my schedule"}
       </button>
+      {!saving && (!name.trim() || !hasBlocks) && (
+        <p className="mt-2 text-center text-xs text-ink-faint">
+          {!name.trim()
+            ? "Enter your name above to save."
+            : "Nothing to save yet — paste, import, or add at least one busy time."}
+        </p>
+      )}
     </div>
   );
 }

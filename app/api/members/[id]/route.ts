@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { broadcastGroupChange, getSupabase } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +34,7 @@ export async function DELETE(
 
   const { data: group } = await supabase
     .from("groups")
-    .select("creator_token")
+    .select("creator_token, slug")
     .eq("id", member.group_id)
     .single();
 
@@ -54,6 +54,8 @@ export async function DELETE(
   if (delErr) {
     return NextResponse.json({ error: delErr.message }, { status: 500 });
   }
+
+  if (group?.slug) await broadcastGroupChange(group.slug);
 
   return NextResponse.json({ ok: true });
 }

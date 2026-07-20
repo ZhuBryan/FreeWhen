@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
-import { getSupabase } from "@/lib/supabase";
+import { broadcastGroupChange, getSupabase } from "@/lib/supabase";
 import { validateSchedule } from "@/lib/schedule";
 import { colorForIndex } from "@/lib/types";
 
@@ -81,6 +81,8 @@ export async function POST(
       { status: 500 },
     );
   }
+
+  await broadcastGroupChange(params.slug);
 
   return NextResponse.json({ id: data.id, editToken }, { status: 201 });
 }

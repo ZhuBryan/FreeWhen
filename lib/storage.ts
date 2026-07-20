@@ -43,3 +43,39 @@ export function clearMyMember(slug: string): void {
     /* ignore */
   }
 }
+
+// ---- per-group view preferences (hours shown + min-free filter) -----------
+
+export type ViewPrefs = {
+  dayStart: number; // minutes from midnight
+  dayEnd: number;
+  minFree: number | null; // null = everyone
+};
+
+export function getViewPrefs(slug: string): ViewPrefs | null {
+  const raw = safeGet(`freewhen:view:${slug}`);
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw) as Partial<ViewPrefs>;
+    if (
+      typeof p.dayStart === "number" &&
+      typeof p.dayEnd === "number" &&
+      p.dayStart >= 0 &&
+      p.dayEnd <= 1440 &&
+      p.dayStart < p.dayEnd
+    ) {
+      return {
+        dayStart: p.dayStart,
+        dayEnd: p.dayEnd,
+        minFree: typeof p.minFree === "number" ? p.minFree : null,
+      };
+    }
+  } catch {
+    /* corrupt entry — fall through */
+  }
+  return null;
+}
+
+export function setViewPrefs(slug: string, prefs: ViewPrefs): void {
+  safeSet(`freewhen:view:${slug}`, JSON.stringify(prefs));
+}

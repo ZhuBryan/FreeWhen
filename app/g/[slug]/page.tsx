@@ -7,21 +7,30 @@ import {
   addWeeksISO,
   bestTimes,
   blocksForWeek,
+  DAY_END,
+  DAY_START,
   formatMonthDay,
+  formatRange,
   formatWeekRange,
   formatWindow,
+  minutesToLabel,
   mondayOfISO,
   todayISO,
   weekDatesISO,
+  DAY_NAMES_FULL,
 } from "@/lib/schedule";
 import {
   getCreatorToken,
   getMyMember,
+  getViewPrefs,
+  setViewPrefs,
   clearMyMember,
 } from "@/lib/storage";
+import { subscribeToGroup } from "@/lib/realtime";
 import OverlapGrid from "@/components/OverlapGrid";
 import AddScheduleFlow from "@/components/AddScheduleFlow";
 import ShareButton from "@/components/ShareButton";
+import PlannerPanel from "@/components/PlannerPanel";
 
 export default function GroupPage({ params }: { params: { slug: string } }) {
   const { slug } = params;
@@ -31,6 +40,8 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
   const [creatorToken, setCreatorToken] = useState<string | null>(null);
   const [me, setMe] = useState<{ id: string; token: string } | null>(null);
+  const [live, setLive] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -51,11 +62,46 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
     }
   }, [slug]);
 
+  // View preferences: which hours the grid shows, and how many people need
+  // to be free for a window to count. Persisted per group.
+  const [dayStart, setDayStart] = useState(DAY_START);
+  const [dayEnd, setDayEnd] = useState(DAY_END);
+  const [minFree, setMinFree] = useState<number | null>(null);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+
   useEffect(() => {
     setCreatorToken(getCreatorToken(slug));
     setMe(getMyMember(slug));
+    const prefs = getViewPrefs(slug);
+    if (prefs) {
+      setDayStart(prefs.dayStart);
+      setDayEnd(prefs.dayEnd);
+      setMinFree(prefs.minFree);
+    }
+    setPrefsLoaded(true);
     load();
   }, [slug, load]);
+
+  // Live sync: subscribe to the group's realtime channel (updates the page the
+  // moment anyone saves a schedule), plus refetch-on-focus as a fallback.
+  useEffect(() => {
+    const unsubscribe = subscribeToGroup(slug, load, setLive);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      unsubscribe();
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [slug, load]);
+
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    setViewPrefs(slug, { dayStart, dayEnd, minFree });
+  }, [slug, prefsLoaded, dayStart, dayEnd, minFree]);
 
   const members: PublicMember[] = useMemo(
     () => data?.members ?? [],
@@ -76,9 +122,43 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
     [members, weekStart],
   );
 
-  const windows = useMemo(() => bestTimes(effectiveMembers), [effectiveMembers]);
+  const effectiveMinFree =
+    minFree === null ? null : Math.min(minFree, Math.max(members.length, 1));
+
+  const windows = useMemo(
+    () =>
+      bestTimes(effectiveMembers, {
+        dayStart,
+        dayEnd,
+        minFree: effectiveMinFree ?? undefined,
+      }),
+    [effectiveMembers, dayStart, dayEnd, effectiveMinFree],
+  );
 
   const isCreator = Boolean(creatorToken);
+
+  async function copyBestTimes() {
+    const lines = windows.map(
+      (w, i) =>
+        `${i + 1}. ${DAY_NAMES_FULL[w.day]} ${formatRange(w.start, w.end)}${
+          w.free === w.total ? "" : ` (${w.free}/${w.total} free)`
+        }`,
+    );
+    const text = [
+      `${data?.group.name ?? "Group"} — best times, week of ${formatMonthDay(
+        weekStart,
+      )}:`,
+      ...lines,
+      window.location.href,
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard blocked */
+    }
+  }
 
   async function removeMember(m: PublicMember) {
     const isMe = me?.id === m.id;
@@ -121,7 +201,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         </p>
         <Link
           href="/"
-          className="mt-6 inline-block rounded-xl bg-gold-500 px-4 py-2 font-semibold text-white hover:bg-gold-600"
+          className="mt-6 inline-block rounded-lg bg-ink px-4 py-2 font-medium text-white transition hover:bg-black"
         >
           Create a new group
         </Link>
@@ -143,19 +223,29 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   const hasMembers = members.length > 0;
 
   return (
-    <div className="mx-auto max-w-2xl px-5 pb-16 pt-8">
+    <div className="mx-auto max-w-2xl px-5 pb-20 pt-8">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <Link href="/" className="text-xs font-medium text-gold-600">
-            FreeWhen
-          </Link>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-ink">
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">
             {data.group.name}
           </h1>
-          <p className="mt-0.5 text-sm text-ink-faint">
-            {members.length} {members.length === 1 ? "person" : "people"} · share
-            to add more
+          <p className="mt-1 flex items-center gap-2 text-sm text-ink-faint">
+            <span>
+              {members.length} {members.length === 1 ? "person" : "people"}
+            </span>
+            {live && (
+              <span
+                className="inline-flex items-center gap-1 text-xs font-medium text-green-700"
+                title="Updates appear instantly when anyone edits"
+              >
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute h-full w-full animate-ping rounded-full bg-green-500 opacity-60" />
+                  <span className="relative h-1.5 w-1.5 rounded-full bg-green-600" />
+                </span>
+                live
+              </span>
+            )}
           </p>
         </div>
         <ShareButton slug={slug} />
@@ -164,19 +254,19 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
       {/* Members */}
       <div className="mt-5">
         {hasMembers ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {members.map((m) => (
               <span
                 key={m.id}
-                className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white py-1 pl-2 pr-1 text-sm"
+                className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white py-1 pl-2 pr-1.5 text-sm"
               >
                 <span
-                  className="h-2.5 w-2.5 rounded-full"
+                  className="h-2 w-2 rounded-full"
                   style={{ backgroundColor: m.color }}
                 />
                 <span className="text-ink">{m.name}</span>
                 {me?.id === m.id && (
-                  <span className="text-[10px] font-semibold uppercase text-gold-600">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
                     you
                   </span>
                 )}
@@ -185,7 +275,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
                     type="button"
                     onClick={() => removeMember(m)}
                     aria-label={`Remove ${m.name}`}
-                    className="ml-0.5 flex h-5 w-5 items-center justify-center rounded-full text-ink-faint transition hover:bg-stone-100 hover:text-rose-600"
+                    className="flex h-4 w-4 items-center justify-center rounded text-ink-faint transition hover:bg-stone-100 hover:text-rose-600"
                   >
                     ×
                   </button>
@@ -194,7 +284,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
             ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-stone-300 bg-white/60 p-6 text-center">
+          <div className="rounded-lg border border-dashed border-stone-300 bg-white p-6 text-center">
             <p className="font-medium text-ink">No schedules yet</p>
             <p className="mt-1 text-sm text-ink-soft">
               Add yours first, then share the link with your friends.
@@ -208,13 +298,16 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         <AddScheduleFlow slug={slug} onAdded={load} />
       </div>
 
-      {/* Overlap + best times */}
+      {/* Overlap + best times + planner */}
       {hasMembers && (
         <>
-          <section className="mt-9">
-            <h2 className="text-lg font-bold text-ink">Weekly overlap</h2>
-            <p className="text-sm text-ink-faint">
-              Greener = more people free. Tap a slot to see who&apos;s busy.
+          <section className="mt-10">
+            <h2 className="text-base font-semibold tracking-tight text-ink">
+              Weekly overlap
+            </h2>
+            <p className="mt-0.5 text-sm text-ink-faint">
+              Greener means more people free. Click a slot to see who&apos;s
+              busy.
             </p>
 
             {/* Week selector */}
@@ -223,21 +316,21 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
                 type="button"
                 onClick={() => setWeekStart((w) => addWeeksISO(w, -1))}
                 aria-label="Previous week"
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-200 bg-white text-ink-soft transition hover:border-gold-300 hover:text-ink"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-stone-200 bg-white text-ink-soft transition hover:border-stone-400 hover:text-ink"
               >
                 ‹
               </button>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-ink">
-                  Week of {formatWeekRange(weekStart)}
+                <span className="text-sm font-medium tabular-nums text-ink">
+                  {formatWeekRange(weekStart)}
                 </span>
                 {weekStart !== currentWeek && (
                   <button
                     type="button"
                     onClick={() => setWeekStart(currentWeek)}
-                    className="rounded-full bg-gold-100 px-2.5 py-0.5 text-xs font-medium text-gold-700 transition hover:bg-gold-200"
+                    className="rounded-md border border-stone-200 bg-white px-2 py-0.5 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
                   >
-                    This week
+                    Today
                   </button>
                 )}
               </div>
@@ -245,51 +338,149 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
                 type="button"
                 onClick={() => setWeekStart((w) => addWeeksISO(w, 1))}
                 aria-label="Next week"
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-200 bg-white text-ink-soft transition hover:border-gold-300 hover:text-ink"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-stone-200 bg-white text-ink-soft transition hover:border-stone-400 hover:text-ink"
               >
                 ›
               </button>
             </div>
 
-            <div className="mt-3 rounded-2xl border border-stone-200 bg-white p-3 sm:p-4">
+            {/* Hours shown */}
+            <div className="mt-3 flex items-center gap-2 text-sm">
+              <label htmlFor="fw-day-start" className="text-ink-faint">
+                Hours
+              </label>
+              <select
+                id="fw-day-start"
+                value={dayStart}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setDayStart(v);
+                  if (dayEnd <= v) setDayEnd(v + 60);
+                }}
+                className="rounded-md border border-stone-200 bg-white px-2 py-1 text-ink outline-none transition focus:border-stone-400"
+              >
+                {Array.from({ length: 24 }, (_, h) => h * 60).map((m) => (
+                  <option key={m} value={m}>
+                    {minutesToLabel(m).replace(":00", "")}
+                  </option>
+                ))}
+              </select>
+              <span className="text-ink-faint">to</span>
+              <select
+                aria-label="Day end"
+                value={dayEnd}
+                onChange={(e) => setDayEnd(Number(e.target.value))}
+                className="rounded-md border border-stone-200 bg-white px-2 py-1 text-ink outline-none transition focus:border-stone-400"
+              >
+                {Array.from({ length: 24 }, (_, h) => (h + 1) * 60)
+                  .filter((m) => m > dayStart)
+                  .map((m) => (
+                    <option key={m} value={m}>
+                      {m === 1440
+                        ? "midnight"
+                        : minutesToLabel(m).replace(":00", "")}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="mt-3 rounded-lg border border-stone-200 bg-white p-3 sm:p-4">
               <OverlapGrid
                 members={effectiveMembers}
                 weekDates={weekDatesISO(weekStart)}
+                dayStart={dayStart}
+                dayEnd={dayEnd}
               />
             </div>
           </section>
 
-          <section className="mt-8">
-            <h2 className="text-lg font-bold text-ink">
-              Best times to meet · week of {formatMonthDay(weekStart)}
-            </h2>
-            <p className="text-sm text-ink-faint">
-              Longest windows when <span className="font-medium">everyone</span>{" "}
-              is free (60 min or more).
-            </p>
+          <section className="mt-10">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-base font-semibold tracking-tight text-ink">
+                Best times · week of {formatMonthDay(weekStart)}
+              </h2>
+              {windows.length > 0 && (
+                <button
+                  type="button"
+                  onClick={copyBestTimes}
+                  className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
+                >
+                  {copied ? "Copied" : "Copy for group chat"}
+                </button>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-ink-faint">
+              <span>Longest windows (60 min or more) when</span>
+              {members.length > 2 ? (
+                <select
+                  aria-label="How many people need to be free"
+                  value={effectiveMinFree ?? 0}
+                  onChange={(e) =>
+                    setMinFree(Number(e.target.value) || null)
+                  }
+                  className="rounded-md border border-stone-200 bg-white px-2 py-0.5 text-ink outline-none transition focus:border-stone-400"
+                >
+                  <option value={0}>everyone</option>
+                  {Array.from(
+                    { length: members.length - 2 },
+                    (_, i) => members.length - 1 - i,
+                  ).map((k) => (
+                    <option key={k} value={k}>
+                      at least {k} of {members.length}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="font-medium">everyone</span>
+              )}
+              <span>is free.</span>
+            </div>
             {windows.length > 0 ? (
-              <ul className="mt-3 space-y-2">
+              <ul className="mt-3 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
                 {windows.map((w, i) => (
-                  <li
-                    key={i}
-                    className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3"
-                  >
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600 text-sm font-bold text-white">
+                  <li key={i} className="flex items-center gap-3 px-4 py-3">
+                    <span className="w-5 shrink-0 text-sm font-semibold tabular-nums text-ink-faint">
                       {i + 1}
                     </span>
-                    <span className="font-semibold text-green-900">
+                    <span className="text-sm font-medium tabular-nums text-ink">
                       {formatWindow(w)}
+                    </span>
+                    <span
+                      className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        w.free === w.total
+                          ? "bg-green-100 text-green-800"
+                          : "bg-stone-100 text-ink-soft"
+                      }`}
+                    >
+                      {w.free === w.total
+                        ? "everyone"
+                        : `${w.free} of ${w.total} free`}
                     </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <div className="mt-3 rounded-xl border border-stone-200 bg-white p-4 text-sm text-ink-soft">
+              <div className="mt-3 rounded-lg border border-stone-200 bg-white p-4 text-sm text-ink-soft">
                 {members.length === 1
                   ? "Add more people to find shared free time."
-                  : "No 60-minute window works for everyone between 8 AM and 10 PM. Try the heatmap above for the closest slots."}
+                  : `No 60-minute window works between ${minutesToLabel(
+                      dayStart,
+                    )} and ${
+                      dayEnd === 1440 ? "midnight" : minutesToLabel(dayEnd)
+                    }. Widen the hours, lower how many people need to be free, or scan the heatmap for the closest slots.`}
               </div>
             )}
+          </section>
+
+          <section className="mt-10">
+            <h2 className="text-base font-semibold tracking-tight text-ink">
+              Plan something
+            </h2>
+            <p className="mb-3 mt-0.5 text-sm text-ink-faint">
+              Scan the coming days for a slot that fits — then send it to the
+              group chat or straight to a calendar.
+            </p>
+            <PlannerPanel members={members} groupName={data.group.name} />
           </section>
         </>
       )}

@@ -22,3 +22,29 @@ export function getSupabase(): SupabaseClient {
   });
   return cached;
 }
+
+// Best-effort realtime broadcast after a mutation so open group pages refresh
+// instantly. Uses the REST broadcast endpoint (no websocket needed server-side)
+// and never fails the request that triggered it.
+export async function broadcastGroupChange(slug: string): Promise<void> {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return;
+  try {
+    await fetch(`${url}/realtime/v1/api/broadcast`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        messages: [
+          { topic: `group:${slug}`, event: "members_changed", payload: {} },
+        ],
+      }),
+    });
+  } catch {
+    /* best-effort only */
+  }
+}

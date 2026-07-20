@@ -176,11 +176,32 @@ export function blocksForWeek(schedule: Block[], weekStartISO: string): Block[] 
   return out;
 }
 
+// Effective blocks for a member on one specific date: recurring blocks on that
+// weekday plus one-off blocks dated exactly that day.
+export function blocksForDate(schedule: Block[], iso: string): Block[] {
+  const wd = weekdayForISODate(iso);
+  if (wd === null) return [];
+  return schedule.filter((b) => (b.date ? b.date === iso : b.day === wd));
+}
+
 // ---- overlap math ---------------------------------------------------------
 
-function slotBounds(slot: number): [number, number] {
-  const s = DAY_START + slot * SLOT;
-  return [s, s + SLOT];
+// grid[day][slot] = { freeCount, total, busy: memberIds }
+export type Cell = {
+  freeCount: number;
+  total: number;
+  busy: string[]; // member ids busy in this slot
+};
+
+// Viewing window for grid/window math. Defaults to 8 AM - 10 PM; callers can
+// widen or narrow it (early risers, night owls, "only show evenings").
+export type ViewWindow = {
+  dayStart?: number; // minutes from midnight, inclusive
+  dayEnd?: number; // minutes from midnight, exclusive
+};
+
+export function slotsIn(dayStart: number, dayEnd: number): number {
+  return Math.max(0, Math.floor((dayEnd - dayStart) / SLOT));
 }
 
 function isFree(schedule: Block[], day: number, from: number, to: number): boolean {
@@ -191,20 +212,20 @@ function isFree(schedule: Block[], day: number, from: number, to: number): boole
   return true;
 }
 
-// grid[day][slot] = { freeCount, total, busy: memberIds }
-export type Cell = {
-  freeCount: number;
-  total: number;
-  busy: string[]; // member ids busy in this slot
-};
-
-export function buildGrid(members: PublicMember[]): Cell[][] {
+export function buildGrid(
+  members: PublicMember[],
+  view: ViewWindow = {},
+): Cell[][] {
+  const dayStart = view.dayStart ?? DAY_START;
+  const dayEnd = view.dayEnd ?? DAY_END;
+  const slots = slotsIn(dayStart, dayEnd);
   const total = members.length;
   const grid: Cell[][] = [];
   for (let day = 0; day < 7; day++) {
     const row: Cell[] = [];
-    for (let slot = 0; slot < SLOTS_PER_DAY; slot++) {
-      const [from, to] = slotBounds(slot);
+    for (let slot = 0; slot < slots; slot++) {
+      const from = dayStart + slot * SLOT;
+      const to = from + SLOT;
       const busy: string[] = [];
       for (const m of members) {
         if (!isFree(m.schedule, day, from, to)) busy.push(m.id);
@@ -220,32 +241,49 @@ export type BestWindow = {
   day: number;
   start: number;
   end: number;
+  free: number; // members guaranteed free for the whole window
+  total: number;
 };
 
-// Contiguous windows (>= minMinutes) where EVERY member is free.
+// Contiguous windows (>= minMinutes) where at least `minFree` members are
+// free (default: everyone). A single sweep per day tracks the running
+// minimum freeCount, so `free` is the head-count guaranteed for the WHOLE
+// window, not just its best slot.
 export function bestTimes(
   members: PublicMember[],
-  opts: { minMinutes?: number; limit?: number } = {},
+  opts: {
+    minMinutes?: number;
+    limit?: number;
+    minFree?: number;
+  } & ViewWindow = {},
 ): BestWindow[] {
   const minMinutes = opts.minMinutes ?? 60;
   const limit = opts.limit ?? 5;
-  if (members.length === 0) return [];
+  const dayStart = opts.dayStart ?? DAY_START;
+  const dayEnd = opts.dayEnd ?? DAY_END;
+  const total = members.length;
+  const minFree = Math.min(opts.minFree ?? total, total);
+  if (total === 0 || minFree < 1) return [];
 
-  const grid = buildGrid(members);
+  const slots = slotsIn(dayStart, dayEnd);
+  const grid = buildGrid(members, { dayStart, dayEnd });
   const windows: BestWindow[] = [];
 
   for (let day = 0; day < 7; day++) {
     let runStart: number | null = null;
-    for (let slot = 0; slot <= SLOTS_PER_DAY; slot++) {
-      const allFree = slot < SLOTS_PER_DAY && grid[day][slot].freeCount === grid[day][slot].total && grid[day][slot].total > 0;
-      if (allFree && runStart === null) {
-        runStart = DAY_START + slot * SLOT;
-      } else if (!allFree && runStart !== null) {
-        const end = DAY_START + slot * SLOT;
+    let runFree = Infinity;
+    for (let slot = 0; slot <= slots; slot++) {
+      const ok = slot < slots && grid[day][slot].freeCount >= minFree;
+      if (ok) {
+        if (runStart === null) runStart = dayStart + slot * SLOT;
+        runFree = Math.min(runFree, grid[day][slot].freeCount);
+      } else if (runStart !== null) {
+        const end = dayStart + slot * SLOT;
         if (end - runStart >= minMinutes) {
-          windows.push({ day, start: runStart, end });
+          windows.push({ day, start: runStart, end, free: runFree, total });
         }
         runStart = null;
+        runFree = Infinity;
       }
     }
   }
@@ -259,6 +297,73 @@ export function bestTimes(
     return a.start - b.start;
   });
   return windows.slice(0, limit);
+}
+
+// Members with no block overlapping [from, to) on `day` — used to show names
+// (not just counts) for a candidate window.
+export function freeMembersDuring(
+  members: PublicMember[],
+  day: number,
+  from: number,
+  to: number,
+): PublicMember[] {
+  return members.filter((m) => isFree(m.schedule, day, from, to));
+}
+
+// ---- date-range planning --------------------------------------------------
+
+export type DayPlan = {
+  date: string; // ISO YYYY-MM-DD
+  day: number; // weekday, 0 = Mon
+  windows: BestWindow[]; // qualifying windows on this date, longest first
+  freeNames: string[]; // members free for the whole best window
+};
+
+// Day-by-day availability over an arbitrary date range, for planning events
+// ("who's free some evening in the next two weeks?"). Each date gets the same
+// guaranteed-head-count sweep as bestTimes, run against that date's effective
+// blocks (recurring + one-offs dated that day).
+export function planRange(
+  members: PublicMember[],
+  startISO: string,
+  days: number,
+  opts: {
+    minMinutes?: number;
+    minFree?: number;
+    perDay?: number; // max windows kept per date
+  } & ViewWindow = {},
+): DayPlan[] {
+  const perDay = opts.perDay ?? 3;
+  const out: DayPlan[] = [];
+  for (let i = 0; i < days; i++) {
+    const date = addDaysISO(startISO, i);
+    const wd = weekdayForISODate(date);
+    if (wd === null) continue;
+    const dayMembers = members.map((m) => ({
+      ...m,
+      schedule: blocksForDate(m.schedule, date),
+    }));
+    // dayMembers only carry this weekday's blocks, so the other six weekdays
+    // read as fully free — keep only this date's windows, and pad the limit by
+    // 6 so those six full-day runs can't crowd real results out.
+    const windows = bestTimes(dayMembers, {
+      minMinutes: opts.minMinutes,
+      minFree: opts.minFree,
+      dayStart: opts.dayStart,
+      dayEnd: opts.dayEnd,
+      limit: perDay + 6,
+    })
+      .filter((w) => w.day === wd)
+      .slice(0, perDay);
+    const best = windows[0];
+    const freeNames = best
+      ? freeMembersDuring(dayMembers, wd, best.start, best.end).map(
+          (m) => m.name,
+        )
+      : [];
+    out.push({ date, day: wd, windows, freeNames });
+  }
+  return out;
 }
 
 // ---- formatting -----------------------------------------------------------

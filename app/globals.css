@@ -15,8 +15,12 @@ html {
 body {
   font-family: var(--font-sans);
   color: theme("colors.ink.DEFAULT");
-  background: #fffdf7;
+  background: #fafafa;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #d1fae5;
 }
 
 /* Thin, unobtrusive scrollbar for the horizontally-scrolling grid on mobile. */
@@ -28,6 +32,6 @@ body {
   height: 6px;
 }
 .grid-scroll::-webkit-scrollbar-thumb {
-  background: #e7e5e4;
+  background: #e4e4e7;
   border-radius: 9999px;
 }
