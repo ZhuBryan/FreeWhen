@@ -13,9 +13,10 @@ import {
   formatRange,
   minutesToLabel,
 } from "@/lib/schedule";
-import { setMyMember } from "@/lib/storage";
+import { getMyMember, setMyMember } from "@/lib/storage";
+import WeekPaintGrid from "@/components/WeekPaintGrid";
 
-type Mode = "quest" | "ics" | "manual";
+type Mode = "quest" | "ics" | "manual" | "draw";
 
 // Group blocks that share a label + time range, collecting their days — used to
 // render compact previews like "Seminar · Tue/Thu · 1:30–2:50 PM".
@@ -54,9 +55,11 @@ function newRow(): ManualRow {
 export default function AddScheduleFlow({
   slug,
   onAdded,
+  buttonLabel = "+ Add my schedule",
 }: {
   slug: string;
   onAdded: () => void;
+  buttonLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -65,6 +68,7 @@ export default function AddScheduleFlow({
   const [icsFileName, setIcsFileName] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("quest");
   const [rows, setRows] = useState<ManualRow[]>([newRow()]);
+  const [drawBlocks, setDrawBlocks] = useState<Block[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -107,8 +111,8 @@ export default function AddScheduleFlow({
   }, [rows]);
 
   const allBlocks = useMemo(
-    () => [...pasteBlocks, ...icsBlocks, ...manualBlocks],
-    [pasteBlocks, icsBlocks, manualBlocks],
+    () => [...pasteBlocks, ...icsBlocks, ...manualBlocks, ...drawBlocks],
+    [pasteBlocks, icsBlocks, manualBlocks, drawBlocks],
   );
   const hasBlocks = allBlocks.length > 0;
 
@@ -121,6 +125,7 @@ export default function AddScheduleFlow({
   }
   if (icsBlocks.length > 0) totalParts.push(`${icsBlocks.length} from calendar`);
   if (manualBlocks.length > 0) totalParts.push(`${manualBlocks.length} manual`);
+  if (drawBlocks.length > 0) totalParts.push(`${drawBlocks.length} drawn`);
 
   function updateRow(id: number, patch: Partial<ManualRow>) {
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -167,13 +172,16 @@ export default function AddScheduleFlow({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not save");
-      setMyMember(slug, data.id, data.editToken);
+      // First schedule saved in this browser becomes "you"; adding someone
+      // else afterwards shouldn't steal that identity.
+      if (!getMyMember(slug)) setMyMember(slug, data.id, data.editToken);
       setOpen(false);
       setName("");
       setRaw("");
       setIcsText("");
       setIcsFileName(null);
       setRows([newRow()]);
+      setDrawBlocks([]);
       setMode("quest");
       onAdded();
     } catch (err) {
@@ -188,9 +196,9 @@ export default function AddScheduleFlow({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full rounded-xl bg-gold-500 px-4 py-3 font-semibold text-white transition hover:bg-gold-600"
+        className="w-full rounded-lg bg-ink px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black"
       >
-        + Add my schedule
+        {buttonLabel}
       </button>
     );
   }
@@ -220,12 +228,13 @@ export default function AddScheduleFlow({
       />
 
       {/* Mode toggle */}
-      <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-stone-100 p-1">
+      <div className="mt-4 grid grid-cols-4 gap-1 rounded-lg bg-stone-100 p-1">
         {(
           [
-            ["quest", "Paste schedule"],
-            ["ics", "Import calendar"],
-            ["manual", "Enter manually"],
+            ["quest", "Paste"],
+            ["ics", "Calendar"],
+            ["manual", "Manual"],
+            ["draw", "Draw"],
           ] as const
         ).map(([value, text]) => (
           <button
@@ -575,6 +584,19 @@ export default function AddScheduleFlow({
               </ul>
             </div>
           )}
+        </>
+      )}
+
+      {mode === "draw" && (
+        <>
+          <label className="mt-4 block text-sm font-medium text-ink-soft">
+            Draw your busy times
+          </label>
+          <p className="mb-2 mt-0.5 text-xs text-ink-faint">
+            Fastest for irregular weeks — paint work shifts, practices,
+            anything.
+          </p>
+          <WeekPaintGrid initialBlocks={drawBlocks} onChange={setDrawBlocks} />
         </>
       )}
 

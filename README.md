@@ -1,5 +1,7 @@
 # FreeWhen
 
+[![CI](https://github.com/ZhuBryan/FreeWhen/actions/workflows/ci.yml/badge.svg)](https://github.com/ZhuBryan/FreeWhen/actions/workflows/ci.yml)
+
 **Find when your friends are actually free.** A tiny schedule-overlap web app
 for student friend groups. Everyone pastes their class schedule once; FreeWhen
 overlaps them into a weekly heatmap and lists the best times when the group is
@@ -29,6 +31,9 @@ free — no accounts, no back-and-forth texting.
      wall-clock times; all-day events are skipped.
    - **Enter manually** — add busy times by hand with day toggles + 30-min time
      pickers.
+   - **Draw** — drag across a week grid to paint busy time (pointer events with
+     capture, so mouse and touch both work; dragging over painted cells
+     erases). Contiguous painted cells merge into single blocks.
 3. **See the overlap** — a Mon–Sun heatmap (green = more people free) plus the
    top free windows, e.g. *"Friday · 2:30–5:30 PM"*.
 
@@ -67,9 +72,14 @@ is connected. Requires the two optional `NEXT_PUBLIC_SUPABASE_*` env vars
 (anon key only; the database is still reachable exclusively through
 server-side routes). Without them the app degrades to refetch-on-focus.
 
+**Editing.** Whoever saved a schedule in this browser gets an "Edit my
+schedule" panel: existing blocks are listed with labels intact (remove any
+with one click) and new busy time is painted on the drag grid; saving PATCHes
+the merged schedule with the member's edit token.
+
 No login. A creator token (for the group) and a per-member edit token are stored
-in the browser's `localStorage`; they are the only way to remove members. Tokens
-are **never** returned by any `GET` endpoint.
+in the browser's `localStorage`; they are the only way to edit or remove
+members. Tokens are **never** returned by any `GET` endpoint.
 
 ## Tech
 
@@ -86,6 +96,7 @@ are **never** returned by any `GET` endpoint.
 | POST | `/api/groups` | `{ name }` | `{ slug, creatorToken }` |
 | GET | `/api/groups/[slug]` | — | `{ group, members(id,name,color,schedule) }` |
 | POST | `/api/groups/[slug]/members` | `{ name, schedule }` | `{ id, editToken }` |
+| PATCH | `/api/members/[id]` | `{ schedule }` + header `x-edit-token` | `{ ok }` |
 | DELETE | `/api/members/[id]` | header `x-edit-token` | `{ ok }` |
 
 Schedule blocks are validated server-side: `day` 0–6, `0 ≤ start < end ≤ 1440`,

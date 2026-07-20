@@ -29,6 +29,7 @@ import {
 import { subscribeToGroup } from "@/lib/realtime";
 import OverlapGrid from "@/components/OverlapGrid";
 import AddScheduleFlow from "@/components/AddScheduleFlow";
+import EditScheduleFlow from "@/components/EditScheduleFlow";
 import ShareButton from "@/components/ShareButton";
 import PlannerPanel from "@/components/PlannerPanel";
 
@@ -293,9 +294,33 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         )}
       </div>
 
-      {/* Add schedule */}
-      <div className="mt-5">
-        <AddScheduleFlow slug={slug} onAdded={load} />
+      {/* Add / edit schedule */}
+      <div className="mt-5 space-y-2">
+        {(() => {
+          const myMember = me
+            ? members.find((m) => m.id === me.id)
+            : undefined;
+          return (
+            myMember &&
+            me && (
+              <EditScheduleFlow
+                key={myMember.id + String(myMember.schedule.length)}
+                member={myMember}
+                token={me.token}
+                onSaved={load}
+              />
+            )
+          );
+        })()}
+        <AddScheduleFlow
+          slug={slug}
+          onAdded={load}
+          buttonLabel={
+            me && members.some((m) => m.id === me.id)
+              ? "+ Add someone else's schedule"
+              : "+ Add my schedule"
+          }
+        />
       </div>
 
       {/* Overlap + best times + planner */}
