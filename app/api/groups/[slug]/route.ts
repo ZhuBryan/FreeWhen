@@ -4,7 +4,7 @@ import { getSupabase } from "@/lib/supabase";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/groups/[slug] -> { group, members(id, name, color, schedule) }
+// GET /api/groups/[slug] -> { group, members(id, name, color, schedule, tz) }
 // Never returns edit_token or creator_token.
 export async function GET(
   _req: Request,
@@ -29,7 +29,7 @@ export async function GET(
 
   const { data: members, error: mErr } = await supabase
     .from("members")
-    .select("id, name, color, schedule")
+    .select("id, name, color, schedule, tz")
     .eq("group_id", group.id)
     .order("created_at", { ascending: true });
 

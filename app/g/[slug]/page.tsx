@@ -27,6 +27,7 @@ import {
   clearMyMember,
 } from "@/lib/storage";
 import { subscribeToGroup } from "@/lib/realtime";
+import { convertBlocks } from "@/lib/timezone";
 import OverlapGrid from "@/components/OverlapGrid";
 import AddScheduleFlow from "@/components/AddScheduleFlow";
 import EditScheduleFlow from "@/components/EditScheduleFlow";
@@ -104,9 +105,25 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
     setViewPrefs(slug, { dayStart, dayEnd, minFree });
   }, [slug, prefsLoaded, dayStart, dayEnd, minFree]);
 
+  // Timezone every member's schedule is displayed in — the viewer's own
+  // browser zone. Members with a different stored `tz` get their schedule
+  // converted before any grid/planner math sees it.
+  const viewerTz = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return "UTC";
+    }
+  }, []);
+
   const members: PublicMember[] = useMemo(
-    () => data?.members ?? [],
-    [data],
+    () =>
+      (data?.members ?? []).map((m) =>
+        m.tz && m.tz !== viewerTz
+          ? { ...m, schedule: convertBlocks(m.schedule, m.tz, viewerTz) }
+          : m,
+      ),
+    [data, viewerTz],
   );
 
   // Week-aware view: recurring blocks always apply; dated one-offs only count
@@ -266,6 +283,11 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
                   style={{ backgroundColor: m.color }}
                 />
                 <span className="text-ink">{m.name}</span>
+                {m.tz && m.tz !== viewerTz && (
+                  <span className="text-[10px] text-ink-faint">
+                    {m.tz.split("/").pop()?.replace(/_/g, " ")}
+                  </span>
+                )}
                 {me?.id === m.id && (
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
                     you

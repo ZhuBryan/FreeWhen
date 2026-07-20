@@ -72,6 +72,20 @@ is connected. Requires the two optional `NEXT_PUBLIC_SUPABASE_*` env vars
 (anon key only; the database is still reachable exclusively through
 server-side routes). Without them the app degrades to refetch-on-focus.
 
+**Timezones.** Each member's schedule is stored with an optional IANA
+timezone (defaulting to the browser's detected zone on save). Every viewer
+sees all schedules converted to *their own* local time — offset math in pure
+TS (`lib/timezone.ts`), including blocks that wrap past midnight (they shift
+weekday and split at the day boundary). Members in another zone get a small
+tag on their chip. A `null` tz means "same as the viewer" so pre-existing
+rows need no backfill.
+
+**Link previews.** Group links shared in Discord/iMessage/Slack render a
+per-group Open Graph image — the group's actual availability heatmap plus
+name and head-count — generated at the edge of request time with `next/og`
+(`app/g/[slug]/opengraph-image.tsx`), with a branded fallback when the group
+can't be loaded.
+
 **Editing.** Whoever saved a schedule in this browser gets an "Edit my
 schedule" panel: existing blocks are listed with labels intact (remove any
 with one click) and new busy time is painted on the drag grid; saving PATCHes
@@ -87,7 +101,10 @@ members. Tokens are **never** returned by any `GET` endpoint.
 - Supabase (Postgres) accessed **only** server-side from route handlers using the
   service role key. The client is lazy-initialised inside each handler, so
   `next build` succeeds with no environment variables set.
-- `nanoid` for slugs (10 chars) and tokens (24 chars). Vitest for parser tests.
+- `nanoid` for slugs (10 chars) and tokens (24 chars). Vitest for unit tests,
+  Playwright for e2e (route-mocked, no database needed), GitHub Actions for CI.
+- Write routes are rate-limited (sliding window per IP, in-memory per
+  instance) and return 429 when exceeded.
 
 ### Routes
 
@@ -116,8 +133,9 @@ Other scripts:
 
 ```bash
 npm run build   # production build (passes with no env vars set)
-npm test        # vitest — parser tests
-npm run lint     # next lint
+npm test        # vitest — parser + scheduling unit tests
+npm run e2e     # playwright — route-mocked e2e (needs npx playwright install chromium)
+npm run lint    # next lint
 ```
 
 ## Supabase setup
@@ -127,6 +145,10 @@ npm run lint     # next lint
    [`supabase/schema.sql`](supabase/schema.sql), and **Run** it. This creates the
    `groups` and `members` tables. (RLS is intentionally left off — all access is
    server-side with the service role key.)
+   - **Existing databases:** run each file in
+     [`supabase/migrations/`](supabase/migrations) instead — currently just
+     `2026-07-20-member-timezones.sql`, which adds the nullable `members.tz`
+     column.
 3. Open **Project Settings → API** and copy:
    - **Project URL** → `SUPABASE_URL` (and `NEXT_PUBLIC_SUPABASE_URL`)
    - **service_role** secret → `SUPABASE_SERVICE_ROLE_KEY`

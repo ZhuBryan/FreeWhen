@@ -52,6 +52,37 @@ function newRow(): ManualRow {
   return { id: nextRowId++, label: "", days: [], start: 9 * 60, end: 17 * 60 };
 }
 
+// Curated timezone picker — common zones first; the browser's detected zone
+// is prepended if it isn't already on the list.
+const TZ_LIST = [
+  "America/Toronto",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Edmonton",
+  "America/Los_Angeles",
+  "America/Vancouver",
+  "America/Halifax",
+  "America/St_Johns",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Asia/Kolkata",
+  "Asia/Shanghai",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Asia/Seoul",
+  "Australia/Sydney",
+  "Pacific/Auckland",
+  "UTC",
+];
+
+function tzLabel(tz: string): string {
+  if (tz === "UTC") return "UTC";
+  const last = tz.split("/").pop() ?? tz;
+  return last.replace(/_/g, " ");
+}
+
 export default function AddScheduleFlow({
   slug,
   onAdded,
@@ -72,6 +103,19 @@ export default function AddScheduleFlow({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [detectedTz] = useState<string>(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return "UTC";
+    }
+  });
+  const [tz, setTz] = useState<string>(detectedTz);
+  const tzOptions = useMemo(
+    () => (TZ_LIST.includes(detectedTz) ? TZ_LIST : [detectedTz, ...TZ_LIST]),
+    [detectedTz],
+  );
 
   const parsed = useMemo(() => parseQuest(raw), [raw]);
   // Lenient fallback: if Quest finds nothing, try the generic day+time scanner.
@@ -168,7 +212,7 @@ export default function AddScheduleFlow({
       const res = await fetch(`/api/groups/${slug}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), schedule: allBlocks }),
+        body: JSON.stringify({ name: name.trim(), schedule: allBlocks, tz }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not save");
@@ -183,6 +227,7 @@ export default function AddScheduleFlow({
       setRows([newRow()]);
       setDrawBlocks([]);
       setMode("quest");
+      setTz(detectedTz);
       onAdded();
     } catch (err) {
       setError((err as Error).message);
@@ -608,6 +653,24 @@ export default function AddScheduleFlow({
             : `${allBlocks.length} block${allBlocks.length === 1 ? "" : "s"} total`}
         </p>
       )}
+
+      <div className="mt-3 flex items-center gap-2 text-sm">
+        <label htmlFor="fw-tz" className="text-ink-faint">
+          Times are in
+        </label>
+        <select
+          id="fw-tz"
+          value={tz}
+          onChange={(e) => setTz(e.target.value)}
+          className="rounded-md border border-stone-200 bg-white px-2 py-1 text-sm text-ink outline-none transition focus:border-stone-400"
+        >
+          {tzOptions.map((z) => (
+            <option key={z} value={z}>
+              {tzLabel(z)}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
 

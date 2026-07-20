@@ -9,6 +9,7 @@ export type PublicMember = {
   name: string;
   color: string;
   schedule: Block[];
+  tz?: string | null;
 };
 
 export type Group = {

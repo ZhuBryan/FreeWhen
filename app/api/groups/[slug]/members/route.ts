@@ -3,15 +3,24 @@ import { nanoid } from "nanoid";
 import { broadcastGroupChange, getSupabase } from "@/lib/supabase";
 import { validateSchedule } from "@/lib/schedule";
 import { colorForIndex } from "@/lib/types";
+import { isValidTimeZone } from "@/lib/timezone";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// POST /api/groups/[slug]/members  { name, schedule } -> { id, editToken }
+// POST /api/groups/[slug]/members  { name, schedule, tz? } -> { id, editToken }
 export async function POST(
   req: Request,
   { params }: { params: { slug: string } },
 ) {
+  if (!rateLimit(`add:${clientIp(req)}`, 20)) {
+    return NextResponse.json(
+      { error: "Too many requests — slow down." },
+      { status: 429 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -36,6 +45,15 @@ export async function POST(
     schedule = validateSchedule((body as { schedule?: unknown }).schedule);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+  }
+
+  const tzInput = (body as { tz?: unknown }).tz;
+  let tz: string | null = null;
+  if (tzInput !== undefined && tzInput !== null) {
+    if (!isValidTimeZone(tzInput)) {
+      return NextResponse.json({ error: "Invalid timezone" }, { status: 400 });
+    }
+    tz = tzInput;
   }
 
   let supabase;
@@ -71,6 +89,7 @@ export async function POST(
       color,
       edit_token: editToken,
       schedule,
+      tz,
     })
     .select("id")
     .single();

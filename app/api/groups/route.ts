@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 import { getSupabase } from "@/lib/supabase";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // POST /api/groups  { name } -> { slug, creatorToken }
 export async function POST(req: Request) {
+  if (!rateLimit(`create:${clientIp(req)}`, 10)) {
+    return NextResponse.json(
+      { error: "Too many requests — slow down." },
+      { status: 429 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();

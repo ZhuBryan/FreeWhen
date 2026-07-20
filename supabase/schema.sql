@@ -20,6 +20,7 @@ create table if not exists members (
   color       text not null,
   edit_token  text not null,
   schedule    jsonb not null default '[]'::jsonb,
+  tz          text, -- null means "same timezone as the viewer / no conversion"
   created_at  timestamptz not null default now()
 );
 

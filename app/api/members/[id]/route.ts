@@ -1,16 +1,25 @@
 import { NextResponse } from "next/server";
 import { broadcastGroupChange, getSupabase } from "@/lib/supabase";
 import { validateSchedule } from "@/lib/schedule";
+import { isValidTimeZone } from "@/lib/timezone";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// PATCH /api/members/[id]  { schedule }  (header: x-edit-token)
+// PATCH /api/members/[id]  { schedule, tz? }  (header: x-edit-token)
 // Only the member's own edit_token may rewrite their schedule.
 export async function PATCH(
   req: Request,
   { params }: { params: { id: string } },
 ) {
+  if (!rateLimit(`edit:${clientIp(req)}`, 30)) {
+    return NextResponse.json(
+      { error: "Too many requests — slow down." },
+      { status: 429 },
+    );
+  }
+
   const token = req.headers.get("x-edit-token");
   if (!token) {
     return NextResponse.json({ error: "Missing edit token" }, { status: 401 });
@@ -28,6 +37,15 @@ export async function PATCH(
     schedule = validateSchedule((body as { schedule?: unknown }).schedule);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+  }
+
+  const tzInput = (body as { tz?: unknown }).tz;
+  let tz: string | null | undefined; // undefined = leave unchanged
+  if (tzInput !== undefined) {
+    if (tzInput !== null && !isValidTimeZone(tzInput)) {
+      return NextResponse.json({ error: "Invalid timezone" }, { status: 400 });
+    }
+    tz = tzInput as string | null;
   }
 
   let supabase;
@@ -52,7 +70,7 @@ export async function PATCH(
 
   const { error: upErr } = await supabase
     .from("members")
-    .update({ schedule })
+    .update(tz === undefined ? { schedule } : { schedule, tz })
     .eq("id", params.id);
 
   if (upErr) {
@@ -72,6 +90,13 @@ export async function DELETE(
   req: Request,
   { params }: { params: { id: string } },
 ) {
+  if (!rateLimit(`del:${clientIp(req)}`, 20)) {
+    return NextResponse.json(
+      { error: "Too many requests — slow down." },
+      { status: 429 },
+    );
+  }
+
   const token = req.headers.get("x-edit-token");
   if (!token) {
     return NextResponse.json({ error: "Missing edit token" }, { status: 401 });
