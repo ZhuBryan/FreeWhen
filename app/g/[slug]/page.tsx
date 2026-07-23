@@ -12,7 +12,6 @@ import {
   formatMonthDay,
   formatRange,
   formatWeekRange,
-  formatWindow,
   minutesToLabel,
   mondayOfISO,
   sharedLabels,
@@ -50,6 +49,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   const [copied, setCopied] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
   const [phoneCopied, setPhoneCopied] = useState(false);
+  const [hoursEditing, setHoursEditing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -315,6 +315,396 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   }
 
   const hasMembers = members.length > 0;
+  const myMember = me ? members.find((m) => m.id === me.id) : undefined;
+  // "Saved" once the visitor has their own schedule in this group. This flips
+  // the page from action-first (big add CTA) to answer-first (availability on
+  // top, a quiet action row below).
+  const hasSaved = Boolean(myMember && me);
+
+  const hoursLabel = `${minutesToLabel(dayStart).replace(":00", "")} to ${
+    dayEnd === 1440 ? "midnight" : minutesToLabel(dayEnd).replace(":00", "")
+  }`;
+
+  // The full add flow used as the top-of-page primary CTA before the visitor
+  // has saved anything.
+  const addPrimaryBlock = (
+    <div className="mt-5">
+      <AddScheduleFlow
+        slug={slug}
+        onAdded={load}
+        buttonLabel={
+          me && members.some((m) => m.id === me.id)
+            ? "+ Add someone else's schedule"
+            : "+ Add my schedule"
+        }
+      />
+    </div>
+  );
+
+  // Once saved, the same actions collapse into one quiet row that sits below
+  // the answer instead of competing with it.
+  const compactActionRow = myMember && me && (
+    <div className="mt-8 flex flex-wrap items-center gap-2">
+      <EditScheduleFlow
+        key={myMember.id + String(myMember.schedule.length)}
+        member={myMember}
+        token={me.token}
+        onSaved={load}
+      />
+      <AddScheduleFlow
+        slug={slug}
+        onAdded={load}
+        buttonLabel="+ Add someone else's schedule"
+      />
+      <button
+        type="button"
+        onClick={useOnPhone}
+        title="Open your schedule on another device, no re-entering it"
+        className="text-xs font-medium text-ink-faint underline-offset-2 transition-colors hover:text-ink hover:underline"
+      >
+        {phoneCopied ? "Link copied, open on your phone" : "Use on my phone"}
+      </button>
+    </div>
+  );
+
+  const availabilitySection = (
+    <section className="fw-fade" style={{ animationDelay: "0ms" }}>
+      <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
+        Availability
+      </p>
+      <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
+        Weekly overlap
+      </h2>
+      <p className="mt-0.5 text-sm text-ink-faint">
+        Greener means more people free. Click a slot to see who&apos;s busy.
+      </p>
+
+      {/* Week selector */}
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setWeekStart((w) => addWeeksISO(w, -1))}
+          aria-label="Previous week"
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-stone-200 bg-white text-ink-soft transition hover:border-stone-400 hover:text-ink"
+        >
+          ‹
+        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium tabular-nums text-ink">
+            {formatWeekRange(weekStart)}
+          </span>
+          {weekStart !== currentWeek && (
+            <button
+              type="button"
+              onClick={() => setWeekStart(currentWeek)}
+              className="rounded-md border border-stone-200 bg-white px-2 py-0.5 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
+            >
+              Today
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setWeekStart((w) => addWeeksISO(w, 1))}
+          aria-label="Next week"
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-stone-200 bg-white text-ink-soft transition hover:border-stone-400 hover:text-ink"
+        >
+          ›
+        </button>
+      </div>
+
+      {/* Hours shown: one quiet line that reveals the two selects on demand. */}
+      <div className="mt-3 text-sm text-ink-faint">
+        {hoursEditing ? (
+          <div className="flex items-center gap-2">
+            <label htmlFor="fw-day-start">Hours</label>
+            <select
+              id="fw-day-start"
+              value={dayStart}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setDayStart(v);
+                if (dayEnd <= v) setDayEnd(v + 60);
+              }}
+              className="rounded-md border border-stone-200 bg-white px-2 py-1 text-ink outline-none transition focus:border-stone-400"
+            >
+              {Array.from({ length: 24 }, (_, h) => h * 60).map((m) => (
+                <option key={m} value={m}>
+                  {minutesToLabel(m).replace(":00", "")}
+                </option>
+              ))}
+            </select>
+            <span>to</span>
+            <select
+              aria-label="Day end"
+              value={dayEnd}
+              onChange={(e) => setDayEnd(Number(e.target.value))}
+              className="rounded-md border border-stone-200 bg-white px-2 py-1 text-ink outline-none transition focus:border-stone-400"
+            >
+              {Array.from({ length: 24 }, (_, h) => (h + 1) * 60)
+                .filter((m) => m > dayStart)
+                .map((m) => (
+                  <option key={m} value={m}>
+                    {m === 1440
+                      ? "midnight"
+                      : minutesToLabel(m).replace(":00", "")}
+                  </option>
+                ))}
+            </select>
+          </div>
+        ) : (
+          <span>
+            <span className="text-ink-soft">{hoursLabel}</span>{" "}
+            <span aria-hidden>·</span>{" "}
+            <button
+              type="button"
+              onClick={() => setHoursEditing(true)}
+              className="font-medium text-gold-700 underline underline-offset-2 hover:text-gold-600"
+            >
+              change
+            </button>
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 rounded-xl border border-stone-200 bg-white p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)] sm:p-4">
+        <OverlapGrid
+          members={effectiveMembers}
+          weekDates={weekDatesISO(weekStart)}
+          dayStart={dayStart}
+          dayEnd={dayEnd}
+        />
+      </div>
+
+      {/* One clear next step when it's still just you: share the link. */}
+      {hasSaved && members.length === 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gold-200 bg-gold-50 px-4 py-3">
+          <p className="text-sm text-ink-soft">
+            <span className="font-medium text-ink">Now share the link</span> so
+            friends can add theirs.
+          </p>
+          <ShareButton slug={slug} />
+        </div>
+      )}
+    </section>
+  );
+
+  const bestTimesSection = (
+    <section className="fw-fade mt-10" style={{ animationDelay: "60ms" }}>
+      <div className="flex items-end justify-between gap-2">
+        <div>
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
+            Recommended
+          </p>
+          <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
+            Best times · week of {formatMonthDay(weekStart)}
+          </h2>
+        </div>
+        {windows.length > 0 && (
+          <button
+            type="button"
+            onClick={copyBestTimes}
+            className="shrink-0 text-xs font-medium text-ink-faint underline-offset-2 transition-colors hover:text-ink hover:underline"
+          >
+            {copied ? "Copied" : "Copy for group chat"}
+          </button>
+        )}
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-ink-faint">
+        <span>Longest windows (60 min or more) when</span>
+        {members.length > 2 ? (
+          <select
+            aria-label="How many people need to be free"
+            value={effectiveMinFree ?? 0}
+            onChange={(e) => setMinFree(Number(e.target.value) || null)}
+            className="rounded-md border border-stone-200 bg-white px-2 py-0.5 text-ink outline-none transition focus:border-stone-400"
+          >
+            <option value={0}>everyone</option>
+            {Array.from(
+              { length: members.length - 2 },
+              (_, i) => members.length - 1 - i,
+            ).map((k) => (
+              <option key={k} value={k}>
+                at least {k} of {members.length}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="font-medium">everyone</span>
+        )}
+        <span>is free.</span>
+      </div>
+      {windows.length > 0 ? (
+        <ul className="mt-3 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          {windows.map((w, i) => (
+            <li
+              key={i}
+              className="group/row flex items-center gap-3 px-4 py-3 transition-colors hover:bg-gold-50"
+            >
+              <span className="w-6 shrink-0 font-mono text-xs font-medium tabular-nums text-ink-faint transition-colors group-hover/row:text-gold-600">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-[15px] font-semibold tabular-nums text-ink">
+                  {formatRange(w.start, w.end)}
+                </span>
+                <span className="text-xs text-ink-faint">
+                  {DAY_NAMES_FULL[w.day]}
+                </span>
+              </span>
+              <span
+                className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                  w.free === w.total
+                    ? "bg-gold-50 text-gold-700 ring-1 ring-gold-200"
+                    : "bg-stone-100 text-ink-soft"
+                }`}
+              >
+                {w.free === w.total ? "everyone" : `${w.free} of ${w.total} free`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-3 rounded-lg border border-stone-200 bg-white p-4 text-sm text-ink-soft">
+          {members.length === 1
+            ? "Add more people to find shared free time."
+            : `No 60-minute window works between ${minutesToLabel(
+                dayStart,
+              )} and ${
+                dayEnd === 1440 ? "midnight" : minutesToLabel(dayEnd)
+              }. Widen the hours, lower how many people need to be free, or scan the heatmap for the closest slots.`}
+        </div>
+      )}
+    </section>
+  );
+
+  const proposalsSection = (data.proposals ?? []).length > 0 && (
+    <section className="fw-fade mt-10" style={{ animationDelay: "120ms" }}>
+      <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
+        Proposed
+      </p>
+      <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
+        Proposed hangouts
+      </h2>
+      <ul className="mt-3 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+        {(data.proposals ?? []).map((p) => {
+          const wd = weekdayForISODate(p.date);
+          const yesVoters = p.rsvps
+            .filter((r) => r.response === "yes")
+            .map((r) => members.find((m) => m.id === r.member_id))
+            .filter((m): m is PublicMember => Boolean(m));
+          const myResponse = me
+            ? p.rsvps.find((r) => r.member_id === me.id)?.response
+            : undefined;
+          return (
+            <li key={p.id} className="px-4 py-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="text-sm font-semibold tabular-nums text-ink">
+                  {wd !== null ? DAY_NAMES[wd] : ""}{" "}
+                  <span className="font-normal text-ink-faint">
+                    {formatMonthDay(p.date)}
+                  </span>
+                </span>
+                <span className="text-sm font-medium tabular-nums text-ink">
+                  {formatRange(p.start, p.end)}
+                </span>
+                <span className="flex items-center gap-1">
+                  {yesVoters.map((m) => (
+                    <span
+                      key={m.id}
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold uppercase text-white"
+                      style={{ backgroundColor: m.color }}
+                      title={m.name}
+                      aria-hidden
+                    >
+                      {m.name.trim().charAt(0) || "?"}
+                    </span>
+                  ))}
+                  <span className="text-xs text-ink-faint">
+                    {yesVoters.length} going
+                  </span>
+                </span>
+                <span className="ml-auto flex shrink-0 items-center gap-2">
+                  {me && (
+                    <span className="inline-flex overflow-hidden rounded-md ring-1 ring-stone-200">
+                      <button
+                        type="button"
+                        onClick={() => rsvp(p.id, "yes")}
+                        aria-pressed={myResponse === "yes"}
+                        className={`px-2.5 py-1 text-xs font-medium transition ${
+                          myResponse === "yes"
+                            ? "bg-gold-500 text-white"
+                            : "bg-white text-ink-soft hover:text-ink"
+                        }`}
+                      >
+                        Yes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => rsvp(p.id, "no")}
+                        aria-pressed={myResponse === "no"}
+                        className={`border-l border-stone-200 px-2.5 py-1 text-xs font-medium transition ${
+                          myResponse === "no"
+                            ? "bg-stone-700 text-white"
+                            : "bg-white text-ink-soft hover:text-ink"
+                        }`}
+                      >
+                        No
+                      </button>
+                    </span>
+                  )}
+                  {isCreator && (
+                    <button
+                      type="button"
+                      onClick={() => deleteProposal(p.id)}
+                      aria-label="Delete proposal"
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-stone-100 hover:text-rose-600"
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+
+  const plannerSection = (
+    <section className="fw-fade mt-10" style={{ animationDelay: "180ms" }}>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
+            Planner
+          </p>
+          <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
+            Plan something
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={copyFeed}
+          title="Subscribe in Google/Apple Calendar, updates as schedules change"
+          className="shrink-0 text-xs font-medium text-ink-faint underline-offset-2 transition-colors hover:text-ink hover:underline"
+        >
+          {feedCopied ? "Link copied" : "Calendar feed"}
+        </button>
+      </div>
+      <p className="mb-3 mt-0.5 text-sm text-ink-faint">
+        Scan the coming days for a slot that fits, then send it to the group
+        chat or straight to a calendar.
+      </p>
+      <PlannerPanel
+        members={members}
+        groupName={data.group.name}
+        slug={slug}
+        myToken={me?.token ?? null}
+        onProposed={load}
+      />
+    </section>
+  );
 
   return (
     <div className="mx-auto max-w-2xl px-5 pb-20 pt-8">
@@ -397,7 +787,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
 
       {/* Same classes: labels 2+ members share at the exact same time */}
       {members.length >= 2 && shared.length > 0 && (
-        <div className="mt-3 rounded-lg border border-stone-200 bg-white p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+        <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50/60 p-3">
           <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
             Same classes
           </p>
@@ -408,6 +798,11 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
               >
                 <span className="font-semibold text-ink">{s.label}</span>
+                {s.room && (
+                  <span className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[11px] text-ink-faint">
+                    {s.room}
+                  </span>
+                )}
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   {s.memberIds.map((id) => {
                     const m = data.members.find((x) => x.id === id);
@@ -435,361 +830,27 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         </div>
       )}
 
-      {/* Add / edit schedule */}
-      <div className="mt-5 space-y-2">
-        {(() => {
-          const myMember = me
-            ? members.find((m) => m.id === me.id)
-            : undefined;
-          return (
-            myMember &&
-            me && (
-              <>
-                <EditScheduleFlow
-                  key={myMember.id + String(myMember.schedule.length)}
-                  member={myMember}
-                  token={me.token}
-                  onSaved={load}
-                />
-                <button
-                  type="button"
-                  onClick={useOnPhone}
-                  title="Open your schedule on another device, no re-entering it"
-                  className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:border-stone-400 hover:text-ink"
-                >
-                  {phoneCopied
-                    ? "Link copied, open it on your phone"
-                    : "Use on my phone"}
-                </button>
-              </>
-            )
-          );
-        })()}
-        <AddScheduleFlow
-          slug={slug}
-          onAdded={load}
-          buttonLabel={
-            me && members.some((m) => m.id === me.id)
-              ? "+ Add someone else's schedule"
-              : "+ Add my schedule"
-          }
-        />
-      </div>
-
-      {/* Overlap + best times + planner */}
-      {hasMembers && (
+      {/* Answer-first once you've saved; action-first until then. Each state
+          leaves exactly one obvious next step. */}
+      {hasSaved && hasMembers ? (
+        <div className="mt-10">
+          {availabilitySection}
+          {bestTimesSection}
+          {compactActionRow}
+          {proposalsSection}
+          {plannerSection}
+        </div>
+      ) : (
         <>
-          <section className="fw-fade mt-10" style={{ animationDelay: "0ms" }}>
-            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
-              Availability
-            </p>
-            <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
-              Weekly overlap
-            </h2>
-            <p className="mt-0.5 text-sm text-ink-faint">
-              Greener means more people free. Click a slot to see who&apos;s
-              busy.
-            </p>
-
-            {/* Week selector */}
-            <div className="mt-3 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setWeekStart((w) => addWeeksISO(w, -1))}
-                aria-label="Previous week"
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-stone-200 bg-white text-ink-soft transition hover:border-stone-400 hover:text-ink"
-              >
-                ‹
-              </button>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium tabular-nums text-ink">
-                  {formatWeekRange(weekStart)}
-                </span>
-                {weekStart !== currentWeek && (
-                  <button
-                    type="button"
-                    onClick={() => setWeekStart(currentWeek)}
-                    className="rounded-md border border-stone-200 bg-white px-2 py-0.5 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
-                  >
-                    Today
-                  </button>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setWeekStart((w) => addWeeksISO(w, 1))}
-                aria-label="Next week"
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-stone-200 bg-white text-ink-soft transition hover:border-stone-400 hover:text-ink"
-              >
-                ›
-              </button>
+          {addPrimaryBlock}
+          {hasMembers && (
+            <div className="mt-10">
+              {availabilitySection}
+              {bestTimesSection}
+              {proposalsSection}
+              {plannerSection}
             </div>
-
-            {/* Hours shown */}
-            <div className="mt-3 flex items-center gap-2 text-sm">
-              <label htmlFor="fw-day-start" className="text-ink-faint">
-                Hours
-              </label>
-              <select
-                id="fw-day-start"
-                value={dayStart}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  setDayStart(v);
-                  if (dayEnd <= v) setDayEnd(v + 60);
-                }}
-                className="rounded-md border border-stone-200 bg-white px-2 py-1 text-ink outline-none transition focus:border-stone-400"
-              >
-                {Array.from({ length: 24 }, (_, h) => h * 60).map((m) => (
-                  <option key={m} value={m}>
-                    {minutesToLabel(m).replace(":00", "")}
-                  </option>
-                ))}
-              </select>
-              <span className="text-ink-faint">to</span>
-              <select
-                aria-label="Day end"
-                value={dayEnd}
-                onChange={(e) => setDayEnd(Number(e.target.value))}
-                className="rounded-md border border-stone-200 bg-white px-2 py-1 text-ink outline-none transition focus:border-stone-400"
-              >
-                {Array.from({ length: 24 }, (_, h) => (h + 1) * 60)
-                  .filter((m) => m > dayStart)
-                  .map((m) => (
-                    <option key={m} value={m}>
-                      {m === 1440
-                        ? "midnight"
-                        : minutesToLabel(m).replace(":00", "")}
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            <div className="mt-3 rounded-xl border border-stone-200 bg-white p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)] sm:p-4">
-              <OverlapGrid
-                members={effectiveMembers}
-                weekDates={weekDatesISO(weekStart)}
-                dayStart={dayStart}
-                dayEnd={dayEnd}
-              />
-            </div>
-          </section>
-
-          <section className="fw-fade mt-10" style={{ animationDelay: "60ms" }}>
-            <div className="flex items-end justify-between gap-2">
-              <div>
-                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
-                  Recommended
-                </p>
-                <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
-                  Best times · week of {formatMonthDay(weekStart)}
-                </h2>
-              </div>
-              {windows.length > 0 && (
-                <button
-                  type="button"
-                  onClick={copyBestTimes}
-                  className="shrink-0 rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-ink-soft transition-colors hover:border-stone-400 hover:text-ink"
-                >
-                  {copied ? "Copied" : "Copy for group chat"}
-                </button>
-              )}
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-ink-faint">
-              <span>Longest windows (60 min or more) when</span>
-              {members.length > 2 ? (
-                <select
-                  aria-label="How many people need to be free"
-                  value={effectiveMinFree ?? 0}
-                  onChange={(e) =>
-                    setMinFree(Number(e.target.value) || null)
-                  }
-                  className="rounded-md border border-stone-200 bg-white px-2 py-0.5 text-ink outline-none transition focus:border-stone-400"
-                >
-                  <option value={0}>everyone</option>
-                  {Array.from(
-                    { length: members.length - 2 },
-                    (_, i) => members.length - 1 - i,
-                  ).map((k) => (
-                    <option key={k} value={k}>
-                      at least {k} of {members.length}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span className="font-medium">everyone</span>
-              )}
-              <span>is free.</span>
-            </div>
-            {windows.length > 0 ? (
-              <ul className="mt-3 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                {windows.map((w, i) => (
-                  <li
-                    key={i}
-                    className="group/row flex items-center gap-3 px-4 py-3 transition-colors hover:bg-gold-50"
-                  >
-                    <span className="w-6 shrink-0 font-mono text-xs font-medium tabular-nums text-ink-faint transition-colors group-hover/row:text-gold-600">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <span className="text-sm font-medium tabular-nums text-ink">
-                      {formatWindow(w)}
-                    </span>
-                    <span
-                      className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        w.free === w.total
-                          ? "bg-gold-50 text-gold-700 ring-1 ring-gold-200"
-                          : "bg-stone-100 text-ink-soft"
-                      }`}
-                    >
-                      {w.free === w.total
-                        ? "everyone"
-                        : `${w.free} of ${w.total} free`}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="mt-3 rounded-lg border border-stone-200 bg-white p-4 text-sm text-ink-soft">
-                {members.length === 1
-                  ? "Add more people to find shared free time."
-                  : `No 60-minute window works between ${minutesToLabel(
-                      dayStart,
-                    )} and ${
-                      dayEnd === 1440 ? "midnight" : minutesToLabel(dayEnd)
-                    }. Widen the hours, lower how many people need to be free, or scan the heatmap for the closest slots.`}
-              </div>
-            )}
-          </section>
-
-          {(data.proposals ?? []).length > 0 && (
-            <section
-              className="fw-fade mt-10"
-              style={{ animationDelay: "120ms" }}
-            >
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
-                Proposed
-              </p>
-              <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
-                Proposed hangouts
-              </h2>
-              <ul className="mt-3 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                {(data.proposals ?? []).map((p) => {
-                  const wd = weekdayForISODate(p.date);
-                  const yesVoters = p.rsvps
-                    .filter((r) => r.response === "yes")
-                    .map((r) => members.find((m) => m.id === r.member_id))
-                    .filter((m): m is PublicMember => Boolean(m));
-                  const myResponse = me
-                    ? p.rsvps.find((r) => r.member_id === me.id)?.response
-                    : undefined;
-                  return (
-                    <li key={p.id} className="px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span className="text-sm font-semibold tabular-nums text-ink">
-                          {wd !== null ? DAY_NAMES[wd] : ""}{" "}
-                          <span className="font-normal text-ink-faint">
-                            {formatMonthDay(p.date)}
-                          </span>
-                        </span>
-                        <span className="text-sm font-medium tabular-nums text-ink">
-                          {formatRange(p.start, p.end)}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          {yesVoters.map((m) => (
-                            <span
-                              key={m.id}
-                              className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold uppercase text-white"
-                              style={{ backgroundColor: m.color }}
-                              title={m.name}
-                              aria-hidden
-                            >
-                              {m.name.trim().charAt(0) || "?"}
-                            </span>
-                          ))}
-                          <span className="text-xs text-ink-faint">
-                            {yesVoters.length} going
-                          </span>
-                        </span>
-                        <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                          {me && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => rsvp(p.id, "yes")}
-                                className={`rounded-md px-2 py-1 text-xs font-medium transition ${
-                                  myResponse === "yes"
-                                    ? "bg-gold-500 text-white"
-                                    : "border border-stone-200 text-ink-soft hover:border-stone-400 hover:text-ink"
-                                }`}
-                              >
-                                Yes
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => rsvp(p.id, "no")}
-                                className={`rounded-md px-2 py-1 text-xs font-medium transition ${
-                                  myResponse === "no"
-                                    ? "bg-stone-700 text-white"
-                                    : "border border-stone-200 text-ink-soft hover:border-stone-400 hover:text-ink"
-                                }`}
-                              >
-                                No
-                              </button>
-                            </>
-                          )}
-                          {isCreator && (
-                            <button
-                              type="button"
-                              onClick={() => deleteProposal(p.id)}
-                              aria-label="Delete proposal"
-                              className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-stone-100 hover:text-rose-600"
-                            >
-                              ×
-                            </button>
-                          )}
-                        </span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
           )}
-
-          <section
-            className="fw-fade mt-10"
-            style={{ animationDelay: "180ms" }}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
-                  Planner
-                </p>
-                <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
-                  Plan something
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={copyFeed}
-                title="Subscribe in Google/Apple Calendar, updates as schedules change"
-                className="shrink-0 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:border-stone-400 hover:text-ink"
-              >
-                {feedCopied ? "Link copied" : "Calendar feed"}
-              </button>
-            </div>
-            <p className="mb-3 mt-0.5 text-sm text-ink-faint">
-              Scan the coming days for a slot that fits, then send it to the
-              group chat or straight to a calendar.
-            </p>
-            <PlannerPanel
-              members={members}
-              groupName={data.group.name}
-              slug={slug}
-              myToken={me?.token ?? null}
-              onProposed={load}
-            />
-          </section>
         </>
       )}
     </div>

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseQuest } from "@/lib/parseQuest";
+import { validateSchedule } from "@/lib/schedule";
 
 // Helper: find a course by code.
 const byCode = <T extends { code: string }>(courses: T[], code: string): T =>
@@ -104,6 +105,7 @@ describe("parseQuest: clean tab-separated (a)", () => {
       start: 870,
       end: 920,
       label: "CS 350 TUT",
+      room: "MC 2038",
     });
   });
 });
@@ -165,5 +167,146 @@ describe("parseQuest: warnings", () => {
     );
     expect(res.blocks).toHaveLength(0);
     expect(res.warnings.length).toBeGreaterThan(0);
+  });
+});
+
+// (d) Modern Quest vertical layout: one line per field, with rooms and
+// start/end dates. Includes single-day exam sittings (TST) that must become
+// one-off dated blocks, and a final sitting whose class-nbr/section/component
+// lines are blank (so it falls back to the bare course code).
+const VERTICAL = `CS 245 - Logic & Computation
+Status\tUnits\tGrading\tGrade\tDeadlines
+Enrolled
+0.50
+Numeric Grading Basis
+Academic Calendar Deadlines
+Class Nbr\tSection\tComponent\tDays & Times\tRoom\tInstructor\tStart/End Date
+6236
+004
+LEC
+TTh 2:30PM - 3:50PM
+MC 1056
+Lila Kari
+09/09/2026 - 12/08/2026
+6436
+105
+TUT
+F 1:30PM - 2:20PM
+MC 4060
+To be Announced
+09/09/2026 - 12/08/2026
+6530
+201
+TST
+Th 4:30PM - 6:20PM
+TBA
+Dalibor Dvorski
+10/29/2026 - 10/29/2026
+STAT 230 - Probability
+Status\tUnits\tGrading\tGrade\tDeadlines
+Enrolled
+0.50
+Numeric Grading Basis
+Academic Calendar Deadlines
+Class Nbr\tSection\tComponent\tDays & Times\tRoom\tInstructor\tStart/End Date
+6031
+101
+TUT
+F 3:30PM - 4:20PM
+UTD 105
+Diana Skrzydlo
+09/09/2026 - 12/08/2026
+6534
+003
+LEC
+MWF 11:30AM - 12:20PM
+DC 1351
+Cecilia Cotton
+09/09/2026 - 12/08/2026
+6538
+201
+TST
+Th 4:30PM - 6:20PM
+TBA
+To be Announced
+10/08/2026 - 10/08/2026
+
+ \t
+
+Th 4:30PM - 6:20PM
+TBA
+To be Announced
+11/19/2026 - 11/19/2026`;
+
+describe("parseQuest: vertical layout with rooms + dated sittings (d)", () => {
+  const res = parseQuest(VERTICAL);
+
+  it("keeps CS 245 LEC recurring on Tue/Thu with its room", () => {
+    expect(res.blocks).toContainEqual({
+      day: 1,
+      start: 870,
+      end: 950,
+      label: "CS 245 LEC",
+      room: "MC 1056",
+    });
+    expect(res.blocks).toContainEqual({
+      day: 3,
+      start: 870,
+      end: 950,
+      label: "CS 245 LEC",
+      room: "MC 1056",
+    });
+  });
+
+  it("keeps CS 245 TUT recurring on Fri with its room", () => {
+    expect(res.blocks).toContainEqual({
+      day: 4,
+      start: 810,
+      end: 860,
+      label: "CS 245 TUT",
+      room: "MC 4060",
+    });
+  });
+
+  it("turns the three exam sittings into dated one-offs with no room", () => {
+    expect(res.blocks).toContainEqual({
+      day: 3,
+      start: 990,
+      end: 1100,
+      label: "CS 245 TST",
+      date: "2026-10-29",
+    });
+    expect(res.blocks).toContainEqual({
+      day: 3,
+      start: 990,
+      end: 1100,
+      label: "STAT 230 TST",
+      date: "2026-10-08",
+    });
+    // The final sitting has blank nbr/section/component lines, so its label
+    // falls back to the bare course code.
+    expect(res.blocks).toContainEqual({
+      day: 3,
+      start: 990,
+      end: 1100,
+      label: "STAT 230",
+      date: "2026-11-19",
+    });
+  });
+
+  it("captures the STAT 230 LEC room", () => {
+    expect(res.blocks).toContainEqual({
+      day: 0,
+      start: 690,
+      end: 740,
+      label: "STAT 230 LEC",
+      room: "DC 1351",
+    });
+  });
+
+  it("produces only schedule-valid blocks", () => {
+    // validateSchedule throws on any bad block (e.g. a dated weekday mismatch).
+    expect(() => validateSchedule(res.blocks)).not.toThrow();
+    expect(validateSchedule(res.blocks)).toHaveLength(res.blocks.length);
   });
 });

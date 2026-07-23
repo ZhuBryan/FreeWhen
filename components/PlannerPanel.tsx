@@ -229,7 +229,7 @@ export default function PlannerPanel({
             <button
               type="button"
               onClick={copyPlan}
-              className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
+              className="text-xs font-medium text-ink-faint underline-offset-2 transition-colors hover:text-ink hover:underline"
             >
               {copied ? "Copied" : "Copy for group chat"}
             </button>
@@ -240,6 +240,13 @@ export default function PlannerPanel({
               const w = p.windows[0];
               const isBest = p.date === bestDate;
               const others = p.windows.slice(1);
+              const ev = {
+                title: groupName,
+                dateISO: p.date,
+                start: w.start,
+                end: w.end,
+                description: "Planned with FreeWhen",
+              };
               return (
                 <li
                   key={p.date}
@@ -271,46 +278,53 @@ export default function PlannerPanel({
                         best bet
                       </span>
                     )}
-                    <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                      <a
-                        href={googleCalendarUrl({
-                          title: groupName,
-                          dateISO: p.date,
-                          start: w.start,
-                          end: w.end,
-                          description: "Planned with FreeWhen",
-                        })}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-md border border-stone-200 px-2 py-1 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
-                      >
-                        Google Cal
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          downloadIcs({
-                            title: groupName,
-                            dateISO: p.date,
-                            start: w.start,
-                            end: w.end,
-                            description: "Planned with FreeWhen",
-                          })
-                        }
-                        className="rounded-md border border-stone-200 px-2 py-1 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
-                      >
-                        .ics
-                      </button>
-                      {canPropose && (
+                    <span className="ml-auto flex shrink-0 items-center gap-2">
+                      {/* One primary action per row: propose if you can,
+                          otherwise the most common calendar add. */}
+                      {canPropose ? (
                         <button
                           type="button"
                           onClick={() => propose(p.date, w.start, w.end)}
                           disabled={proposing === p.date}
-                          className="rounded-md border border-stone-200 px-2 py-1 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink disabled:opacity-50"
+                          className="rounded-md bg-gold-500 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-gold-600 disabled:opacity-50"
                         >
                           {proposing === p.date ? "Proposing…" : "Propose"}
                         </button>
+                      ) : (
+                        <a
+                          href={googleCalendarUrl(ev)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-md border border-stone-200 px-2 py-1 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
+                        >
+                          Google Cal
+                        </a>
                       )}
+                      {/* Everything else tucks behind a quiet disclosure. */}
+                      <details className="group/cal relative">
+                        <summary className="cursor-pointer list-none text-xs font-medium text-ink-faint underline-offset-2 transition-colors hover:text-ink hover:underline [&::-webkit-details-marker]:hidden">
+                          add to calendar
+                        </summary>
+                        <div className="absolute right-0 z-10 mt-1 flex w-36 flex-col gap-0.5 rounded-lg border border-stone-200 bg-white p-1 shadow-[0_4px_16px_rgba(0,0,0,0.1)]">
+                          {canPropose && (
+                            <a
+                              href={googleCalendarUrl(ev)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-md px-2 py-1.5 text-xs font-medium text-ink-soft transition hover:bg-stone-100 hover:text-ink"
+                            >
+                              Google Calendar
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => downloadIcs(ev)}
+                            className="rounded-md px-2 py-1.5 text-left text-xs font-medium text-ink-soft transition hover:bg-stone-100 hover:text-ink"
+                          >
+                            Download .ics
+                          </button>
+                        </div>
+                      </details>
                     </span>
                   </div>
                   {proposeError === p.date && (

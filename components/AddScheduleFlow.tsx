@@ -310,11 +310,19 @@ export default function AddScheduleFlow({
   }
 
   if (!open) {
+    // The self-add is the page's primary CTA (bold, full-width). Adding
+    // someone else, once you already have a schedule, is a quiet secondary
+    // action that sits inline without competing with the availability answer.
+    const isPrimary = buttonLabel === "+ Add my schedule";
     return (
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full rounded-lg bg-gold-500 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_1px_2px_rgba(6,78,59,0.2)] transition hover:bg-gold-600 hover:shadow-[0_2px_8px_rgba(6,78,59,0.25)] active:scale-[0.98]"
+        className={
+          isPrimary
+            ? "w-full rounded-lg bg-gold-500 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_1px_2px_rgba(6,78,59,0.2)] transition hover:bg-gold-600 hover:shadow-[0_2px_8px_rgba(6,78,59,0.25)] active:scale-[0.98]"
+            : "w-full rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink-soft shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-stone-400 hover:text-ink sm:w-auto"
+        }
       >
         {buttonLabel}
       </button>
@@ -322,7 +330,7 @@ export default function AddScheduleFlow({
   }
 
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+    <div className="w-full rounded-xl border border-stone-200 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-ink">Add your schedule</h3>
         <button
@@ -442,6 +450,7 @@ export default function AddScheduleFlow({
                                 {m.component ? `${m.component} · ` : ""}
                                 {m.days.map((d) => DAY_NAMES[d]).join("/")}{" "}
                                 {formatRange(m.start, m.end)}
+                                {m.room ? ` · ${m.room}` : ""}
                               </li>
                             ))}
                           </ul>

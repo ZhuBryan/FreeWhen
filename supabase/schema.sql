@@ -10,7 +10,10 @@ create table if not exists groups (
   slug          text unique not null,
   name          text not null,
   creator_token text not null,
-  created_at    timestamptz not null default now()
+  created_at    timestamptz not null default now(),
+  -- bumped by the API on every mutation; the daily prune job removes groups
+  -- idle for 180 days (see migrations/2026-07-23-prune-idle-groups.sql)
+  last_active   timestamptz not null default now()
 );
 
 create table if not exists members (

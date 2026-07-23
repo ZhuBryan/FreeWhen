@@ -25,11 +25,21 @@ export function getSupabase(): SupabaseClient {
 
 // Best-effort realtime broadcast after a mutation so open group pages refresh
 // instantly. Uses the REST broadcast endpoint (no websocket needed server-side)
-// and never fails the request that triggered it.
+// and never fails the request that triggered it. Every mutation routes through
+// here, so it doubles as the "this group is still alive" bump that keeps the
+// daily idle-group prune job away.
 export async function broadcastGroupChange(slug: string): Promise<void> {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return;
+  try {
+    await getSupabase()
+      .from("groups")
+      .update({ last_active: new Date().toISOString() })
+      .eq("slug", slug);
+  } catch {
+    /* best-effort only (column may not exist before the prune migration) */
+  }
   try {
     await fetch(`${url}/realtime/v1/api/broadcast`, {
       method: "POST",

@@ -60,6 +60,7 @@ export function validateSchedule(input: unknown): Block[] {
     const end = b.end;
     const label = b.label;
     const date = b.date;
+    const room = b.room;
     if (typeof day !== "number" || !Number.isInteger(day) || day < 0 || day > 6) {
       throw new Error("block.day must be an integer 0-6");
     }
@@ -87,6 +88,14 @@ export function validateSchedule(input: unknown): Block[] {
         throw new Error("block.date weekday must match block.day");
       }
       clean.date = date;
+    }
+    // Optional room label. Trimmed and capped; a non-string rejects the payload.
+    if (room !== undefined && room !== null) {
+      if (typeof room !== "string") {
+        throw new Error("block.room must be a string");
+      }
+      const trimmed = room.trim().slice(0, 40);
+      if (trimmed) clean.room = trimmed;
     }
     out.push(clean);
   }
@@ -403,12 +412,13 @@ export function formatWindow(w: BestWindow): string {
 // Powers the "Same classes" section, so an exact time match is required.
 export function sharedLabels(
   members: PublicMember[],
-): { label: string; memberIds: string[] }[] {
+): { label: string; memberIds: string[]; room?: string }[] {
   const order = new Map<string, number>();
   members.forEach((m, i) => order.set(m.id, i));
 
-  // label -> exact-slot key -> set of member ids on that slot
-  const byLabel = new Map<string, Map<string, Set<string>>>();
+  // label -> exact-slot key -> { member ids on that slot, first room seen }
+  type Bucket = { ids: Set<string>; room?: string };
+  const byLabel = new Map<string, Map<string, Bucket>>();
   for (const m of members) {
     for (const b of m.schedule) {
       if (b.date) continue; // recurring blocks only
@@ -417,25 +427,34 @@ export function sharedLabels(
       const key = `${label}|${b.day}|${b.start}|${b.end}`;
       let buckets = byLabel.get(label);
       if (!buckets) byLabel.set(label, (buckets = new Map()));
-      let ids = buckets.get(key);
-      if (!ids) buckets.set(key, (ids = new Set()));
-      ids.add(m.id);
+      let bucket = buckets.get(key);
+      if (!bucket) buckets.set(key, (bucket = { ids: new Set() }));
+      bucket.ids.add(m.id);
+      if (!bucket.room && typeof b.room === "string" && b.room) {
+        bucket.room = b.room;
+      }
     }
   }
 
-  const out: { label: string; memberIds: string[] }[] = [];
+  const out: { label: string; memberIds: string[]; room?: string }[] = [];
   for (const [label, buckets] of byLabel) {
     const shared = new Set<string>();
-    for (const ids of buckets.values()) {
-      if (ids.size >= 2) for (const id of ids) shared.add(id);
+    let room: string | undefined;
+    for (const bucket of buckets.values()) {
+      if (bucket.ids.size >= 2) {
+        for (const id of bucket.ids) shared.add(id);
+        if (room === undefined && bucket.room) room = bucket.room;
+      }
     }
     if (shared.size > 0) {
-      out.push({
+      const entry: { label: string; memberIds: string[]; room?: string } = {
         label,
         memberIds: [...shared].sort(
           (a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0),
         ),
-      });
+      };
+      if (room !== undefined) entry.room = room;
+      out.push(entry);
     }
   }
   out.sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));

@@ -20,9 +20,12 @@ accounts, no sign ups, just a link you share.
    (`/g/<slug>`).
 2. **Everyone adds their schedule**, using any mix of four input methods:
    - **Paste.** Copy your Quest "My Class Schedule" page straight in and the
-     [Quest parser](#how-the-quest-parser-works) turns it into busy blocks. If
-     that finds nothing, a lenient generic parser (`lib/parseGeneric.ts`) scans
-     for any day plus time range lines, like `Work: Mon, Wed 9am - 5pm` or
+     [Quest parser](#how-the-quest-parser-works) turns it into busy blocks,
+     capturing each meeting's room and turning single-day sittings (like a
+     midterm on one date) into one-off dated blocks instead of weekly ones;
+     shared rooms show up in the group's "Same classes" list. If that finds
+     nothing, a lenient generic parser (`lib/parseGeneric.ts`) scans for any
+     day plus time range lines, like `Work: Mon, Wed 9am - 5pm` or
      `Tuesday and Thursday 14:30-16:00`.
    - **Calendar.** Upload or paste an `.ics` file from Google Calendar,
      Outlook, or Apple Calendar (`lib/parseIcs.ts`). Weekly repeating events
@@ -113,6 +116,11 @@ There is no login anywhere. A creator token for the group and a per member
 edit token are stored in the browser's `localStorage`, and they are the only
 way to edit or remove anything. Tokens are never returned by any `GET`
 endpoint.
+
+Old groups clean themselves up: every save, edit, or RSVP bumps the group's
+`last_active` timestamp, and a daily `pg_cron` job deletes groups idle for
+180 days (cascading to their members and proposals). See
+`supabase/migrations/2026-07-23-prune-idle-groups.sql`.
 
 ## Tech
 

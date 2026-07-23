@@ -106,6 +106,29 @@ describe("validateSchedule: dated blocks", () => {
   });
 });
 
+describe("validateSchedule: room", () => {
+  it("accepts and preserves a room string", () => {
+    const out = validateSchedule([
+      { day: 0, start: 540, end: 600, label: "CS 245 LEC", room: "MC 1056" },
+    ]);
+    expect(out[0].room).toBe("MC 1056");
+  });
+
+  it("caps a room longer than 40 characters", () => {
+    const long = "R".repeat(60);
+    const out = validateSchedule([
+      { day: 0, start: 540, end: 600, label: "x", room: long },
+    ]);
+    expect(out[0].room).toBe("R".repeat(40));
+  });
+
+  it("rejects a non-string room", () => {
+    expect(() =>
+      validateSchedule([{ day: 0, start: 540, end: 600, label: "x", room: 42 }]),
+    ).toThrow(/room must be a string/i);
+  });
+});
+
 describe("weekdayForISODate", () => {
   it("maps known dates (0=Mon)", () => {
     expect(weekdayForISODate("2026-07-13")).toBe(0); // Mon
@@ -299,5 +322,22 @@ describe("sharedLabels", () => {
     const a = mk("a", [{ day: 0, start: 540, end: 600, label: "Busy" }]);
     const b = mk("b", [{ day: 0, start: 540, end: 600, label: "Busy" }]);
     expect(sharedLabels([a, b])).toEqual([]);
+  });
+
+  it("carries the room of a shared class and ignores a lone class", () => {
+    // Both hold the fixture's CS 245 LEC (Tue/Thu 2:30-3:50, room MC 1056).
+    const lec = (): Block[] => [
+      { day: 1, start: 870, end: 950, label: "CS 245 LEC", room: "MC 1056" },
+      { day: 3, start: 870, end: 950, label: "CS 245 LEC", room: "MC 1056" },
+    ];
+    // A CS 245 TUT only one member has (at a time nobody else shares).
+    const a = mk("a", [
+      ...lec(),
+      { day: 4, start: 810, end: 860, label: "CS 245 TUT", room: "MC 4060" },
+    ]);
+    const b = mk("b", lec());
+    expect(sharedLabels([a, b])).toEqual([
+      { label: "CS 245 LEC", memberIds: ["a", "b"], room: "MC 1056" },
+    ]);
   });
 });

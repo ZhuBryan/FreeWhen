@@ -20,6 +20,7 @@ type Grouped = {
   end: number;
   days: number[];
   blocks: Block[];
+  room?: string;
 };
 
 function groupRecurring(blocks: Block[]): Grouped[] {
@@ -31,6 +32,7 @@ function groupRecurring(blocks: Block[]): Grouped[] {
     if (g) {
       g.days.push(b.day);
       g.blocks.push(b);
+      if (!g.room && b.room) g.room = b.room;
     } else {
       map.set(key, {
         key,
@@ -39,6 +41,7 @@ function groupRecurring(blocks: Block[]): Grouped[] {
         end: b.end,
         days: [b.day],
         blocks: [b],
+        room: b.room,
       });
     }
   }
@@ -114,7 +117,7 @@ export default function EditScheduleFlow({
           setPainted([]);
           setOpen(true);
         }}
-        className="w-full rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-sm font-medium text-ink shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-stone-400 hover:text-ink"
+        className="w-full rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink-soft shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-stone-400 hover:text-ink sm:w-auto"
       >
         Edit my schedule
       </button>
@@ -124,7 +127,7 @@ export default function EditScheduleFlow({
   const removedCount = member.schedule.length - kept.length;
 
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+    <div className="w-full rounded-xl border border-stone-200 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-ink">Edit your schedule</h3>
         <button
@@ -158,6 +161,7 @@ export default function EditScheduleFlow({
                   <span className="text-ink-faint">
                     · {g.days.map((d) => DAY_NAMES[d]).join("/")} ·{" "}
                     {formatRange(g.start, g.end)}
+                    {g.room ? ` · ${g.room}` : ""}
                   </span>
                 </span>
                 <button
@@ -180,6 +184,7 @@ export default function EditScheduleFlow({
                   <span className="text-ink-faint">
                     · {DAY_NAMES[b.day]} {formatMonthDay(b.date!)} ·{" "}
                     {formatRange(b.start, b.end)}
+                    {b.room ? ` · ${b.room}` : ""}
                   </span>
                 </span>
                 <button
