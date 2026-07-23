@@ -19,6 +19,13 @@ export function getSupabase(): SupabaseClient {
 
   cached = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      // Next.js caches fetch() responses in its Data Cache, and route-level
+      // force-dynamic does not opt these inner requests out. Without no-store,
+      // member reads freeze at their first snapshot and saves look like they
+      // vanish even though the rows are in the database.
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
   });
   return cached;
 }

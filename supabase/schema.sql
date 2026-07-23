@@ -27,8 +27,9 @@ create table if not exists members (
   created_at  timestamptz not null default now()
 );
 
-create index if not exists members_group_id_idx on members(group_id);
-create index if not exists groups_slug_idx on groups(slug);
+-- No secondary indexes on purpose: these tables stay tiny, sequential scans
+-- are free at this size, and fewer indexes means fewer things to corrupt.
+-- (groups.slug already has an index via its unique constraint.)
 
 -- schedule jsonb shape: array of blocks
 --   { "day": 0..6 (0=Mon), "start": minutes-from-midnight, "end": minutes, "label": "CS 350 LEC" }
@@ -52,4 +53,3 @@ create table if not exists proposal_rsvps (
   created_at timestamptz not null default now(),
   primary key (proposal_id, member_id)
 );
-create index if not exists proposals_group_id_idx on proposals(group_id);
