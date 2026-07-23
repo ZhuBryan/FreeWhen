@@ -1,0 +1,1 @@
+Run all your subagents on Opus, never on Fable. Delegate the heavy work and keep yourself for planning and judgment. when you want to build something, use opus to do it as subagents.

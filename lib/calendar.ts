@@ -1,4 +1,4 @@
-// lib/calendar.ts — build .ics files and Google Calendar links for a chosen
+// lib/calendar.ts: build .ics files and Google Calendar links for a chosen
 // window. Times are written as floating local time (no TZ suffix): "7 PM" in
 // the app means 7 PM on everyone's clock, which is what a friend group wants.
 
@@ -26,17 +26,14 @@ export type CalendarEvent = {
   description?: string;
 };
 
-export function buildIcs(ev: CalendarEvent): string {
+// The VEVENT lines for one event (shared by buildIcs and buildIcsCalendar).
+function vevent(ev: CalendarEvent): string[] {
   const uid = `${ev.dateISO}-${ev.start}-${Math.random()
     .toString(36)
     .slice(2, 10)}@freewhen`;
   const now = new Date();
-  const dtstamp =
-    now.toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
+  const dtstamp = now.toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
   return [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//FreeWhen//EN",
     "BEGIN:VEVENT",
     `UID:${uid}`,
     `DTSTAMP:${dtstamp}`,
@@ -45,6 +42,28 @@ export function buildIcs(ev: CalendarEvent): string {
     `SUMMARY:${icsEscape(ev.title)}`,
     ...(ev.description ? [`DESCRIPTION:${icsEscape(ev.description)}`] : []),
     "END:VEVENT",
+  ];
+}
+
+export function buildIcs(ev: CalendarEvent): string {
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//FreeWhen//EN",
+    ...vevent(ev),
+    "END:VCALENDAR",
+  ].join("\r\n");
+}
+
+// A single named VCALENDAR holding many events, used by the live feed route so
+// a calendar app can subscribe once and see every everyone-free window.
+export function buildIcsCalendar(name: string, events: CalendarEvent[]): string {
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//FreeWhen//EN",
+    `X-WR-CALNAME:${icsEscape(name)}`,
+    ...events.flatMap(vevent),
     "END:VCALENDAR",
   ].join("\r\n");
 }

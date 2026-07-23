@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   if (!rateLimit(`create:${clientIp(req)}`, 10)) {
     return NextResponse.json(
-      { error: "Too many requests — slow down." },
+      { error: "Too many requests, slow down." },
       { status: 429 },
     );
   }

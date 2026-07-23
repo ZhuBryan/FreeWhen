@@ -1,5 +1,5 @@
 // lib/timezone.ts
-// Per-member timezone conversion. Pure TS, no deps — uses Intl for offsets.
+// Per-member timezone conversion. Pure TS, no deps, uses Intl for offsets.
 import type { Block } from "@/lib/types";
 import { addDaysISO } from "@/lib/schedule";
 
@@ -77,7 +77,7 @@ export function convertBlocks(
     const date = b.date ? addDaysISO(b.date, dayShift) : undefined;
 
     if (end > 1440) {
-      // Crosses midnight in the new timezone — split at the day boundary.
+      // Crosses midnight in the new timezone, split at the day boundary.
       const first: Block = { day, start, end: 1440, label: b.label };
       if (date) first.date = date;
       out.push(first);

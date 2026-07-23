@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 // Static product preview: a week of overlap data baked in so the landing page
@@ -18,6 +18,17 @@ const PREVIEW: number[][] = [
   [3, 4, 4, 4, 3, 2, 2],
 ];
 
+// Believable group names the input placeholder cycles through. The first is the
+// SSR default (kept in sync with the initial JSX placeholder).
+const PLACEHOLDERS = [
+  "e.g. CS 350 study crew",
+  "e.g. intramural dodgeball",
+  "e.g. pho friday",
+  "e.g. co-op house",
+  "e.g. climbing gang",
+  "e.g. MATH 239 survivors",
+];
+
 function previewShade(level: number): string {
   // 0 = all busy … 4 = all free (matches the real grid's interpolation).
   const from = [240, 240, 241];
@@ -32,6 +43,17 @@ export default function LandingPage() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phIndex, setPhIndex] = useState(0);
+
+  // Rotate the input placeholder through a few believable group names so the
+  // empty state feels alive. First value matches the SSR default.
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhIndex((i) => (i + 1) % PLACEHOLDERS.length),
+      2500,
+    );
+    return () => clearInterval(id);
+  }, []);
 
   async function createGroup(e: React.FormEvent) {
     e.preventDefault();
@@ -60,110 +82,127 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-5 pb-20 pt-14 sm:pt-20">
+    <div className="mx-auto max-w-4xl px-5 pb-20 pt-12 sm:pt-16">
       {/* Hero */}
-      <div className="text-center">
-        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-ink-faint">
-          Schedule overlap for friend groups
-        </p>
-        <h1 className="mt-4 text-4xl font-semibold leading-tight tracking-tight text-ink sm:text-5xl">
-          Find the time everyone&apos;s{" "}
-          <span className="underline decoration-green-500 decoration-4 underline-offset-4">
-            actually free
-          </span>
-        </h1>
-        <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-ink-soft">
-          Everyone adds their schedule once — paste it, import a calendar file,
-          or enter it by hand. FreeWhen overlaps them, shows when the whole
-          group is open, and finds days that work for events.
-        </p>
-      </div>
-
-      {/* Create form */}
-      <form
-        onSubmit={createGroup}
-        className="mx-auto mt-9 max-w-md rounded-xl border border-stone-200 bg-white p-5"
-      >
-        <label
-          htmlFor="group-name"
-          className="block text-sm font-medium text-ink-soft"
-        >
-          Name your group
-        </label>
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-          <input
-            id="group-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. CS 350 study crew"
-            maxLength={80}
-            className="w-full rounded-lg border border-stone-300 px-3.5 py-2.5 text-ink outline-none transition focus:border-stone-500"
-          />
-          <button
-            type="submit"
-            disabled={loading || !name.trim()}
-            className="shrink-0 rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {loading ? "Creating…" : "Create group"}
-          </button>
-        </div>
-        {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
-        <p className="mt-3 text-xs text-ink-faint">
-          No accounts, no sign-ups — you get a private link to share.
-        </p>
-      </form>
-
-      {/* Product preview */}
-      <div className="mx-auto mt-10 max-w-md">
-        <div className="rounded-xl border border-stone-200 bg-white p-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-ink-soft">
-              4 people · week of Nov 9
+      <div className="relative">
+        <div
+          className="hero-grid pointer-events-none absolute -inset-x-16 -top-24 bottom-0 -z-10"
+          aria-hidden
+        />
+        <div className="grid items-center gap-10 sm:grid-cols-[1.05fr_0.95fr] sm:gap-12">
+          {/* Left: pitch + form */}
+          <div>
+            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-ink-faint">
+              Schedule overlap for friend groups
             </p>
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-600" />
-              live
-            </span>
-          </div>
-          <div className="mt-3 grid grid-cols-7 gap-[3px]" aria-hidden>
-            {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
-              <div
-                key={i}
-                className="pb-0.5 text-center text-[10px] font-medium text-ink-faint"
-              >
-                {d}
-              </div>
-            ))}
-            {PREVIEW.map((row, r) =>
-              row.map((level, c) => (
-                <div
-                  key={`${r}-${c}`}
-                  className="h-3 rounded-[3px]"
-                  style={{ backgroundColor: previewShade(level) }}
+            <h1 className="mt-4 text-4xl font-semibold leading-[1.08] tracking-tight text-ink sm:text-5xl">
+              Find the time everyone&apos;s{" "}
+              <span className="relative whitespace-nowrap">
+                <span className="relative z-10">actually free</span>
+                <span
+                  className="absolute inset-x-0 bottom-1 -z-0 h-3 bg-gold-200/70"
+                  aria-hidden
                 />
-              )),
-            )}
+              </span>
+            </h1>
+            <p className="mt-4 max-w-md text-base leading-relaxed text-ink-soft">
+              Everyone adds their schedule once: paste it, import a calendar
+              file, or enter it by hand. FreeWhen overlaps them, shows when the
+              whole group is open, and finds days that work for events.
+            </p>
+
+            {/* Create form: inline, resting on a hairline instead of a card */}
+            <form
+              onSubmit={createGroup}
+              className="mt-8 border-t border-stone-200 pt-6"
+            >
+              <label
+                htmlFor="group-name"
+                className="block text-sm font-medium text-ink-soft"
+              >
+                Name your group
+              </label>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <input
+                  id="group-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={PLACEHOLDERS[phIndex]}
+                  maxLength={80}
+                  className="w-full rounded-lg border border-stone-300 bg-white px-3.5 py-2.5 text-ink outline-none transition focus:border-gold-400 focus:ring-2 focus:ring-gold-200"
+                />
+                <button
+                  type="submit"
+                  disabled={loading || !name.trim()}
+                  className="shrink-0 rounded-lg bg-gold-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_1px_2px_rgba(6,78,59,0.2)] transition hover:bg-gold-600 hover:shadow-[0_2px_8px_rgba(6,78,59,0.25)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-[0_1px_2px_rgba(6,78,59,0.2)]"
+                >
+                  {loading ? "Creating…" : "Create group"}
+                </button>
+              </div>
+              {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+              <p className="mt-3 text-xs text-ink-faint">
+                No accounts, no sign-ups. You get a private link to share.
+              </p>
+            </form>
           </div>
-          <div className="mt-3 flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2">
-            <span className="text-xs font-medium tabular-nums text-ink">
-              Best: Friday · 7:00–10:00 PM
-            </span>
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800">
-              everyone free
-            </span>
+
+          {/* Right: product preview, lifted slightly off the page and tilted a
+              hair so it straightens on hover */}
+          <div className="group/card sm:pl-2">
+            <div className="-rotate-[0.7deg] rounded-xl border border-stone-200 bg-white p-4 shadow-[0_12px_32px_-16px_rgba(6,78,59,0.18)] transition-[transform,box-shadow] duration-500 ease-out hover:-translate-y-0.5 hover:rotate-0 hover:shadow-[0_18px_40px_-18px_rgba(6,78,59,0.28)] motion-reduce:transform-none">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-ink-soft">
+                  4 people · week of Nov 9
+                </p>
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-600" />
+                  live
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-7 gap-[3px]" aria-hidden>
+                {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
+                  <div
+                    key={i}
+                    className="pb-0.5 text-center text-[10px] font-medium text-ink-faint"
+                  >
+                    {d}
+                  </div>
+                ))}
+                {PREVIEW.map((row, r) =>
+                  row.map((level, c) => (
+                    <div
+                      key={`${r}-${c}`}
+                      className="fw-pour h-3.5 rounded-[3px]"
+                      style={{
+                        backgroundColor: previewShade(level),
+                        animationDelay: `${(r * 7 + c) * 12}ms`,
+                      }}
+                    />
+                  )),
+                )}
+              </div>
+              <div className="mt-3 flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2">
+                <span className="text-xs font-medium tabular-nums text-ink">
+                  Best: Friday · 7:00–10:00 PM
+                </span>
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800">
+                  everyone free
+                </span>
+              </div>
+            </div>
+            <p className="mt-2 text-center text-[11px] text-ink-faint">
+              Live preview of a group page
+            </p>
           </div>
         </div>
-        <p className="mt-2 text-center text-[11px] text-ink-faint">
-          Live preview of a group page
-        </p>
       </div>
 
       {/* How it works */}
-      <div className="mt-16">
-        <h2 className="text-center font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-ink-faint">
+      <div className="mt-20">
+        <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-ink-faint">
           How it works
         </h2>
-        <ol className="mt-6 grid gap-px overflow-hidden rounded-xl border border-stone-200 bg-stone-200 sm:grid-cols-3">
+        <ol className="mt-6 grid gap-4 sm:grid-cols-3">
           {[
             {
               n: "01",
@@ -181,10 +220,15 @@ export default function LandingPage() {
               d: "A live heatmap of free time, the best windows to meet, and days that fit an event.",
             },
           ].map((s) => (
-            <li key={s.n} className="bg-white p-4">
-              <span className="font-mono text-xs text-ink-faint">{s.n}</span>
-              <h3 className="mt-2 text-sm font-semibold text-ink">{s.t}</h3>
-              <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+            <li
+              key={s.n}
+              className="rounded-xl border border-stone-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+            >
+              <span className="font-mono text-xs font-medium text-gold-600">
+                {s.n}
+              </span>
+              <h3 className="mt-3 text-[15px] font-semibold text-ink">{s.t}</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
                 {s.d}
               </p>
             </li>

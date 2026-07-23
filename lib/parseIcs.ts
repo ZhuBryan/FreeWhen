@@ -31,7 +31,7 @@ type RawProp = {
 };
 
 // RFC 5545 line unfolding: a CRLF (or LF/CR) followed by a single space or tab
-// is a continuation of the previous line — remove the break and one whitespace.
+// is a continuation of the previous line: remove the break and one whitespace.
 function unfold(text: string): string[] {
   const rawLines = text.split(/\r\n|\r|\n/);
   const lines: string[] = [];
@@ -178,7 +178,7 @@ export function parseIcs(input: string, now: Date = new Date()): IcsResult {
   let ev: PendingEvent | null = null;
 
   const finish = (e: PendingEvent) => {
-    // All-day events (holidays etc.) are not busy time blocks — skip silently.
+    // All-day events (holidays etc.) are not busy time blocks, skip silently.
     if (e.dtstartIsDate || !e.dtstartValue) return;
 
     const start = timeOfDay(e.dtstartValue);
@@ -214,7 +214,7 @@ export function parseIcs(input: string, now: Date = new Date()): IcsResult {
 
     if (days) {
       // Recurring event. Honour UNTIL: if the repeat ended before `now`, the
-      // event no longer contributes any busy time — skip it. (COUNT is ignored
+      // event no longer contributes any busy time, skip it. (COUNT is ignored
       // and treated as ongoing.)
       if (rule?.UNTIL) {
         const untilMs = dateMs(rule.UNTIL);

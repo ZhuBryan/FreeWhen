@@ -1,7 +1,7 @@
-// lib/realtime.ts — client-side live sync. Subscribes to a Supabase Realtime
+// lib/realtime.ts: client-side live sync. Subscribes to a Supabase Realtime
 // broadcast channel per group; API routes broadcast after every mutation, so
 // every open group page refreshes the instant someone adds or removes a
-// schedule. Needs the *public* anon key (safe to expose — the database itself
+// schedule. Needs the *public* anon key (safe to expose, the database itself
 // is only reachable through the service-role API routes; RLS-off tables are
 // not readable over realtime broadcast).
 //

@@ -1,7 +1,7 @@
 // app/g/[slug]/layout.tsx
 // Per-group <title>/description so shared links show the group name instead
 // of the generic site title. Falls back silently if Supabase isn't
-// configured or the group can't be found — metadata should never 500 a page.
+// configured or the group can't be found, metadata should never 500 a page.
 import type { Metadata } from "next";
 import { getSupabase } from "@/lib/supabase";
 
@@ -23,7 +23,7 @@ export async function generateMetadata({
     return {
       title: `${group.name} · FreeWhen`,
       description:
-        "See when everyone in this group is free — live schedule overlap.",
+        "See when everyone in this group is free. Live schedule overlap.",
     };
   } catch {
     return { title: "FreeWhen" };

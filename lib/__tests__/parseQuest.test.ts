@@ -53,7 +53,7 @@ const WITH_TBA = [
   "3333\t001\tLEC\tOnline TBA\t\tStaff",
 ].join("\n");
 
-describe("parseQuest — clean tab-separated (a)", () => {
+describe("parseQuest: clean tab-separated (a)", () => {
   const res = parseQuest(CLEAN);
 
   it("finds all 5 courses", () => {
@@ -108,7 +108,7 @@ describe("parseQuest — clean tab-separated (a)", () => {
   });
 });
 
-describe("parseQuest — newline-mangled (b)", () => {
+describe("parseQuest: newline-mangled (b)", () => {
   const res = parseQuest(MANGLED);
 
   it("still recovers the same CS 350 meetings via lookback", () => {
@@ -136,7 +136,7 @@ describe("parseQuest — newline-mangled (b)", () => {
   });
 });
 
-describe("parseQuest — TBA + online rows (c)", () => {
+describe("parseQuest: TBA + online rows (c)", () => {
   const res = parseQuest(WITH_TBA);
 
   it("keeps the timed LEC and skips TBA/online with no warnings", () => {
@@ -158,7 +158,7 @@ describe("parseQuest — TBA + online rows (c)", () => {
   });
 });
 
-describe("parseQuest — warnings", () => {
+describe("parseQuest: warnings", () => {
   it("warns when end is not after start", () => {
     const res = parseQuest(
       ["CS 246 - OOP", "9999\t001\tLEC\tMWF 3:00PM - 2:00PM\tMC 4040"].join("\n"),

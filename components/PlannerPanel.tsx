@@ -46,9 +46,15 @@ function planScore(p: DayPlan): number {
 export default function PlannerPanel({
   members,
   groupName,
+  slug,
+  myToken,
+  onProposed,
 }: {
   members: PublicMember[];
   groupName: string;
+  slug?: string;
+  myToken?: string | null;
+  onProposed?: () => void;
 }) {
   const [startISO, setStartISO] = useState(() => todayISO());
   const [span, setSpan] = useState(14);
@@ -56,6 +62,35 @@ export default function PlannerPanel({
   const [duration, setDuration] = useState(120);
   const [minFree, setMinFree] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [proposing, setProposing] = useState<string | null>(null);
+  const [proposeError, setProposeError] = useState<string | null>(null);
+
+  const canPropose = Boolean(slug && myToken);
+
+  async function propose(dateISO: string, start: number, end: number) {
+    if (!slug || !myToken) return;
+    setProposing(dateISO);
+    setProposeError(null);
+    try {
+      const res = await fetch(`/api/groups/${slug}/proposals`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-edit-token": myToken,
+        },
+        body: JSON.stringify({ date: dateISO, start, end }),
+      });
+      if (!res.ok) {
+        setProposeError(dateISO);
+        return;
+      }
+      onProposed?.();
+    } catch {
+      setProposeError(dateISO);
+    } finally {
+      setProposing(null);
+    }
+  }
 
   const total = members.length;
   const effectiveMinFree =
@@ -92,7 +127,7 @@ export default function PlannerPanel({
       )} (${who} free)`;
     });
     const text = [
-      `${groupName} — days that work (${TOD[tod].label.toLowerCase()}, ${
+      `${groupName}: days that work (${TOD[tod].label.toLowerCase()}, ${
         duration / 60
       }h+):`,
       ...lines,
@@ -200,15 +235,18 @@ export default function PlannerPanel({
             </button>
           </div>
 
-          <ul className="mt-2 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
+          <ul className="mt-2 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
             {hits.map((p) => {
               const w = p.windows[0];
               const isBest = p.date === bestDate;
               const others = p.windows.slice(1);
               return (
-                <li key={p.date} className="px-4 py-3">
+                <li
+                  key={p.date}
+                  className="group/row px-4 py-3 transition-colors hover:bg-gold-50"
+                >
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="w-16 shrink-0 text-sm font-semibold tabular-nums text-ink">
+                    <span className="w-16 shrink-0 text-sm font-semibold tabular-nums text-ink transition-colors group-hover/row:text-gold-600">
                       {DAY_NAMES[p.day]}{" "}
                       <span className="font-normal text-ink-faint">
                         {formatMonthDay(p.date)}
@@ -229,7 +267,7 @@ export default function PlannerPanel({
                         : `${w.free} of ${w.total} free`}
                     </span>
                     {isBest && (
-                      <span className="rounded-full bg-ink px-2 py-0.5 text-xs font-semibold text-white">
+                      <span className="fw-pulse-once rounded-full bg-gold-500 px-2 py-0.5 text-xs font-semibold text-white">
                         best bet
                       </span>
                     )}
@@ -263,8 +301,23 @@ export default function PlannerPanel({
                       >
                         .ics
                       </button>
+                      {canPropose && (
+                        <button
+                          type="button"
+                          onClick={() => propose(p.date, w.start, w.end)}
+                          disabled={proposing === p.date}
+                          className="rounded-md border border-stone-200 px-2 py-1 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink disabled:opacity-50"
+                        >
+                          {proposing === p.date ? "Proposing…" : "Propose"}
+                        </button>
+                      )}
                     </span>
                   </div>
+                  {proposeError === p.date && (
+                    <div className="mt-1 text-xs text-rose-600">
+                      Could not propose. Try again.
+                    </div>
+                  )}
                   <div className="mt-1 text-xs text-ink-faint">
                     {w.free < w.total && p.freeNames.length > 0 && (
                       <>Free: {p.freeNames.join(", ")}</>

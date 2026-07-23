@@ -16,7 +16,7 @@ export async function POST(
 ) {
   if (!rateLimit(`add:${clientIp(req)}`, 20)) {
     return NextResponse.json(
-      { error: "Too many requests — slow down." },
+      { error: "Too many requests, slow down." },
       { status: 429 },
     );
   }

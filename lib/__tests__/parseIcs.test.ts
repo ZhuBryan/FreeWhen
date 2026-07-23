@@ -51,7 +51,7 @@ const OUTLOOK = [
   "END:VCALENDAR",
 ].join("\r\n");
 
-describe("parseIcs — Google-style (a)", () => {
+describe("parseIcs: Google-style (a)", () => {
   const res = parseIcs(GOOGLE, NOW);
 
   it("expands BYDAY=MO,WE,FR into three recurring blocks", () => {
@@ -96,7 +96,7 @@ describe("parseIcs — Google-style (a)", () => {
   });
 });
 
-describe("parseIcs — Outlook-style, WEEKLY without BYDAY (b)", () => {
+describe("parseIcs: Outlook-style, WEEKLY without BYDAY (b)", () => {
   const res = parseIcs(OUTLOOK, NOW);
 
   it("uses the DTSTART weekday (Wed → day 2)", () => {
@@ -107,7 +107,7 @@ describe("parseIcs — Outlook-style, WEEKLY without BYDAY (b)", () => {
   });
 });
 
-describe("parseIcs — import window (d)", () => {
+describe("parseIcs: import window (d)", () => {
   // A one-off dated well after the +365-day window (2027-12 vs NOW 2026-09).
   const FUTURE = [
     "BEGIN:VCALENDAR",
@@ -128,7 +128,7 @@ describe("parseIcs — import window (d)", () => {
   });
 });
 
-describe("parseIcs — expired weekly UNTIL (e)", () => {
+describe("parseIcs: expired weekly UNTIL (e)", () => {
   // Weekly repeat whose UNTIL (2026-05-01) is before NOW (2026-09-01).
   const EXPIRED = [
     "BEGIN:VCALENDAR",
@@ -168,7 +168,7 @@ describe("parseIcs — expired weekly UNTIL (e)", () => {
   });
 });
 
-describe("parseIcs — garbage input (c)", () => {
+describe("parseIcs: garbage input (c)", () => {
   it("returns no blocks and does not crash on non-ics text", () => {
     const res = parseIcs(
       "This is just some random text.\nNot an ICS file at all.\nBEGIN but not really\n",

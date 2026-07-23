@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIcs, googleCalendarUrl } from "@/lib/calendar";
+import { buildIcs, buildIcsCalendar, googleCalendarUrl } from "@/lib/calendar";
 
 const ev = {
   title: "Study crew; hangout, maybe",
@@ -24,6 +24,22 @@ describe("buildIcs", () => {
     expect(buildIcs(ev)).toContain(
       "SUMMARY:Study crew\\; hangout\\, maybe",
     );
+  });
+});
+
+describe("buildIcsCalendar", () => {
+  const events = [
+    ev,
+    { title: "Second event", dateISO: "2026-07-25", start: 60, end: 120 },
+  ];
+
+  it("names the calendar and holds one VEVENT per event", () => {
+    const ics = buildIcsCalendar("Study Crew; free times", events);
+    expect(ics).toContain("BEGIN:VCALENDAR");
+    // Name is escaped per RFC 5545.
+    expect(ics).toContain("X-WR-CALNAME:Study Crew\\; free times");
+    expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(2);
+    expect(ics.match(/END:VEVENT/g)).toHaveLength(2);
   });
 });
 

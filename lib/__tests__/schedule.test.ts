@@ -77,7 +77,7 @@ describe("week date helpers", () => {
   });
 });
 
-describe("validateSchedule — dated blocks", () => {
+describe("validateSchedule: dated blocks", () => {
   it("accepts a dated block whose weekday matches its day", () => {
     const out = validateSchedule([datedThisWeek]);
     expect(out).toEqual([datedThisWeek]);
@@ -148,7 +148,7 @@ describe("bestTimes with minFree", () => {
   const c = member("c", []);
 
   it("default requires everyone and reports the head-count", () => {
-    // Monday: everyone is only free 12 PM onward — no Monday window in 9-12.
+    // Monday: everyone is only free 12 PM onward, no Monday window in 9-12.
     const w = bestTimes([a, b, c], { dayStart: 540, dayEnd: 720, limit: 50 });
     expect(w.filter((x) => x.day === 0)).toHaveLength(0);
     // Widen to 1 PM and Monday 12-1 qualifies, with everyone free.
@@ -272,5 +272,32 @@ describe("planRange", () => {
     });
     expect(plans[0].windows[0]).toMatchObject({ free: 1, total: 3 });
     expect(plans[0].freeNames).toEqual(["S"]);
+  });
+});
+
+// ---- shared classes --------------------------------------------------------
+
+import { sharedLabels } from "@/lib/schedule";
+
+describe("sharedLabels", () => {
+  it("groups members who share an identical recurring block", () => {
+    const a = mk("a", [{ day: 0, start: 540, end: 600, label: "CS 350 LEC" }]);
+    const b = mk("b", [{ day: 0, start: 540, end: 600, label: "CS 350 LEC" }]);
+    const c = mk("c", []);
+    expect(sharedLabels([a, b, c])).toEqual([
+      { label: "CS 350 LEC", memberIds: ["a", "b"] },
+    ]);
+  });
+
+  it("does not match when the times differ", () => {
+    const a = mk("a", [{ day: 0, start: 540, end: 600, label: "CS 350 LEC" }]);
+    const b = mk("b", [{ day: 0, start: 600, end: 660, label: "CS 350 LEC" }]);
+    expect(sharedLabels([a, b])).toEqual([]);
+  });
+
+  it('excludes the generic "Busy" label', () => {
+    const a = mk("a", [{ day: 0, start: 540, end: 600, label: "Busy" }]);
+    const b = mk("b", [{ day: 0, start: 540, end: 600, label: "Busy" }]);
+    expect(sharedLabels([a, b])).toEqual([]);
   });
 });

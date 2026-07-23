@@ -15,7 +15,7 @@ const DAY_RE =
 
 // A time range: 12h ("9am-5pm", "9:00 AM - 5:00 PM") or 24h ("09:00-17:00").
 const RANGE_RE =
-  /(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)?\s*(?:-|–|—|to)\s*(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)?/i;
+  /(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)?\s*(?:-|–|\u2014|to)\s*(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)?/i;
 
 function dayNum(token: string): number {
   const t = token.toLowerCase();
@@ -45,7 +45,7 @@ function extractLabel(rest: string): string {
   const s = rest
     .replace(DAY_RE, " ")
     .replace(/\b(and|&)\b/gi, " ")
-    .replace(/[,:;|/\\@()[\]{}.\-–—]+/g, " ")
+    .replace(/[,:;|/\\@()[\]{}.\-–\u2014]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   return s || "Busy";

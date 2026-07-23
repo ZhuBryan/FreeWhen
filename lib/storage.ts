@@ -1,4 +1,4 @@
-// lib/storage.ts — tiny localStorage helpers (client only). No tokens ever leave
+// lib/storage.ts: tiny localStorage helpers (client only). No tokens ever leave
 // the browser except as request headers.
 
 function safeGet(key: string): string | null {
@@ -13,7 +13,7 @@ function safeSet(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch {
-    /* storage blocked — non-fatal */
+    /* storage blocked, non-fatal */
   }
 }
 
@@ -71,7 +71,7 @@ export function getViewPrefs(slug: string): ViewPrefs | null {
       };
     }
   } catch {
-    /* corrupt entry — fall through */
+    /* corrupt entry, fall through */
   }
   return null;
 }

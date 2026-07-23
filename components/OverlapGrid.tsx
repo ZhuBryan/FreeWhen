@@ -96,8 +96,10 @@ export default function OverlapGrid({
                       onClick={() => setSel(isSel ? null : { day, slot })}
                       title={`${cell.freeCount}/${total} free`}
                       style={{ backgroundColor: shadeFor(frac) }}
-                      className={`h-[13px] flex-1 border-[0.5px] border-white/70 transition-[outline] ${
-                        isSel ? "outline outline-2 outline-ink" : ""
+                      className={`h-[15px] flex-1 border-[0.5px] border-white transition-[outline,filter] hover:brightness-110 ${
+                        isSel
+                          ? "relative z-10 outline outline-2 outline-gold-500"
+                          : ""
                       } ${onHour ? "border-t-stone-200" : ""}`}
                     />
                   );
@@ -109,9 +111,9 @@ export default function OverlapGrid({
       </div>
 
       {/* Legend */}
-      <div className="mt-3 flex items-center gap-2 text-xs text-ink-faint">
+      <div className="mt-3 flex items-center justify-end gap-2 text-[11px] text-ink-faint">
         <span>All busy</span>
-        <div className="flex h-2 flex-1 max-w-[160px] overflow-hidden rounded-full">
+        <div className="flex h-1.5 w-24 overflow-hidden rounded-full ring-1 ring-stone-200">
           {Array.from({ length: 10 }).map((_, i) => (
             <div
               key={i}
@@ -123,9 +125,18 @@ export default function OverlapGrid({
         <span>All free</span>
       </div>
 
-      {/* Selected-cell detail */}
+      {/* Selected-cell detail. Keyed on the slot so it replays its entrance on
+          each new selection; the everyone-free case gets a warmer, springier
+          treatment. */}
       {selInfo && (
-        <div className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm">
+        <div
+          key={`${selInfo.day}-${selInfo.from}`}
+          className={`mt-4 rounded-lg border p-3 text-sm ${
+            selInfo.busy.length === 0
+              ? "fw-pop-spring border-gold-200 bg-gold-50"
+              : "fw-pop border-stone-200 bg-stone-50"
+          }`}
+        >
           <div className="font-semibold text-ink">
             {DAY_NAMES[selInfo.day]} · {minutesToLabel(selInfo.from)} –{" "}
             {minutesToLabel(selInfo.to)}
@@ -136,7 +147,9 @@ export default function OverlapGrid({
               {selInfo.busy.map((m) => m.name).join(", ")}
             </p>
           ) : (
-            <p className="mt-1 font-medium text-green-700">Everyone is free.</p>
+            <p className="mt-1 font-semibold text-gold-700">
+              Everyone is free.
+            </p>
           )}
           {selInfo.busy.length > 0 && selInfo.free.length > 0 && (
             <p className="mt-0.5 text-ink-faint">

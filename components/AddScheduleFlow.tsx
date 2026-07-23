@@ -18,7 +18,7 @@ import WeekPaintGrid from "@/components/WeekPaintGrid";
 
 type Mode = "quest" | "ics" | "manual" | "draw";
 
-// Group blocks that share a label + time range, collecting their days — used to
+// Group blocks that share a label + time range, collecting their days, used to
 // render compact previews like "Seminar · Tue/Thu · 1:30–2:50 PM".
 type BlockGroup = { label: string; start: number; end: number; days: number[] };
 function groupBlocks(blocks: Block[]): BlockGroup[] {
@@ -47,12 +47,32 @@ type ManualRow = {
 const TIME_OPTIONS: number[] = [];
 for (let t = DAY_START; t <= DAY_END; t += SLOT) TIME_OPTIONS.push(t);
 
+const DEFAULT_ROW_START = 9 * 60;
+const DEFAULT_ROW_END = 17 * 60;
+
 let nextRowId = 1;
 function newRow(): ManualRow {
-  return { id: nextRowId++, label: "", days: [], start: 9 * 60, end: 17 * 60 };
+  return {
+    id: nextRowId++,
+    label: "",
+    days: [],
+    start: DEFAULT_ROW_START,
+    end: DEFAULT_ROW_END,
+  };
 }
 
-// Curated timezone picker — common zones first; the browser's detected zone
+// A row the user has clearly started filling in (typed a label or changed the
+// default time), so an empty pristine row never nags for missing days.
+function rowTouched(r: ManualRow): boolean {
+  return (
+    r.label.trim() !== "" ||
+    r.start !== DEFAULT_ROW_START ||
+    r.end !== DEFAULT_ROW_END ||
+    r.days.length > 0
+  );
+}
+
+// Curated timezone picker: common zones first; the browser's detected zone
 // is prepended if it isn't already on the list.
 const TZ_LIST = [
   "America/Toronto",
@@ -102,6 +122,9 @@ export default function AddScheduleFlow({
   const [drawBlocks, setDrawBlocks] = useState<Block[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [triedSave, setTriedSave] = useState(false);
+  const [tzChanged, setTzChanged] = useState(false);
+  const [tzEditing, setTzEditing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [detectedTz] = useState<string>(() => {
@@ -160,16 +183,58 @@ export default function AddScheduleFlow({
   );
   const hasBlocks = allBlocks.length > 0;
 
-  // Combined-total line, e.g. "12 from Quest + 4 from calendar + 2 manual".
-  const totalParts: string[] = [];
-  if (pasteBlocks.length > 0) {
-    totalParts.push(
-      `${pasteBlocks.length} ${usingGeneric ? "from text" : "from Quest"}`,
+  // Per-source counts, powering the tab badges.
+  const sourceCounts: Record<Mode, number> = {
+    quest: pasteBlocks.length,
+    ics: icsBlocks.length,
+    manual: manualBlocks.length,
+    draw: drawBlocks.length,
+  };
+
+  // Breakdown line, e.g. "Saving 21 busy times: 12 pasted + 4 from calendar + 2
+  // manual + 3 drawn", only nonzero sources appear.
+  const savingParts: string[] = [];
+  if (pasteBlocks.length > 0) savingParts.push(`${pasteBlocks.length} pasted`);
+  if (icsBlocks.length > 0) savingParts.push(`${icsBlocks.length} from calendar`);
+  if (manualBlocks.length > 0) savingParts.push(`${manualBlocks.length} manual`);
+  if (drawBlocks.length > 0) savingParts.push(`${drawBlocks.length} drawn`);
+
+  // Manual rows the user started but left with no day toggled: they produce
+  // zero blocks, so we surface them rather than dropping them silently.
+  const rowsMissingDays = rows.filter(
+    (r) => rowTouched(r) && r.days.length === 0 && r.end > r.start,
+  );
+
+  // Specific, self-clearing reasons a save can't go through. Derived from the
+  // live form state, so fixing a problem removes its line immediately.
+  const saveIssues: string[] = [];
+  if (!name.trim()) saveIssues.push("Add your name first.");
+  if (!hasBlocks) {
+    saveIssues.push(
+      "No busy times yet. Paste a schedule, import a calendar, enter times, or draw them.",
     );
   }
-  if (icsBlocks.length > 0) totalParts.push(`${icsBlocks.length} from calendar`);
-  if (manualBlocks.length > 0) totalParts.push(`${manualBlocks.length} manual`);
-  if (drawBlocks.length > 0) totalParts.push(`${drawBlocks.length} drawn`);
+  if (rowsMissingDays.length > 0) {
+    saveIssues.push(
+      `${rowsMissingDays.length} ${
+        rowsMissingDays.length === 1 ? "row is" : "rows are"
+      } missing days.`,
+    );
+  }
+  const canSubmit = saveIssues.length === 0;
+
+  // Persistent under-button helper, echoing the same specific reasons.
+  const helperText = !name.trim()
+    ? !hasBlocks
+      ? "Enter your name and add at least one busy time to save."
+      : "Enter your name above to save."
+    : !hasBlocks
+      ? "Add at least one busy time to save."
+      : rowsMissingDays.length > 0
+        ? `${rowsMissingDays.length} ${
+            rowsMissingDays.length === 1 ? "row is" : "rows are"
+          } missing days. Pick a day or remove the row.`
+        : "";
 
   function updateRow(id: number, patch: Partial<ManualRow>) {
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -205,7 +270,12 @@ export default function AddScheduleFlow({
   }
 
   async function save() {
-    if (!name.trim() || !hasBlocks) return;
+    if (saving) return;
+    // Never a dead click: surface the specific reasons instead of POSTing.
+    if (!canSubmit) {
+      setTriedSave(true);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -228,6 +298,9 @@ export default function AddScheduleFlow({
       setDrawBlocks([]);
       setMode("quest");
       setTz(detectedTz);
+      setTzChanged(false);
+      setTzEditing(false);
+      setTriedSave(false);
       onAdded();
     } catch (err) {
       setError((err as Error).message);
@@ -241,7 +314,7 @@ export default function AddScheduleFlow({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full rounded-lg bg-ink px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black"
+        className="w-full rounded-lg bg-gold-500 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_1px_2px_rgba(6,78,59,0.2)] transition hover:bg-gold-600 hover:shadow-[0_2px_8px_rgba(6,78,59,0.25)] active:scale-[0.98]"
       >
         {buttonLabel}
       </button>
@@ -249,7 +322,7 @@ export default function AddScheduleFlow({
   }
 
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-4">
+    <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-ink">Add your schedule</h3>
         <button
@@ -286,16 +359,24 @@ export default function AddScheduleFlow({
             key={value}
             type="button"
             onClick={() => setMode(value)}
-            className={`rounded-lg px-1.5 py-1.5 text-center text-xs font-medium transition sm:text-sm ${
+            className={`flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-center text-xs font-medium transition-colors sm:text-sm ${
               mode === value
-                ? "bg-white text-ink shadow-sm"
+                ? "bg-white text-ink ring-1 ring-stone-200"
                 : "text-ink-faint hover:text-ink"
             }`}
           >
             {text}
+            {sourceCounts[value] > 0 && (
+              <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-gold-100 px-1 text-[10px] font-semibold tabular-nums text-gold-700">
+                {sourceCounts[value]}
+              </span>
+            )}
           </button>
         ))}
       </div>
+      <p className="mt-1.5 text-xs text-ink-faint">
+        Tabs combine. Add from as many as you like, then save once.
+      </p>
 
       {mode === "quest" && (
         <>
@@ -303,7 +384,7 @@ export default function AddScheduleFlow({
             Paste schedule
           </label>
           <p className="mt-0.5 text-xs text-ink-faint">
-            Works with UW Quest — or any text with days and times.
+            Works with UW Quest, or any text with days and times.
           </p>
           <textarea
             value={raw}
@@ -318,7 +399,7 @@ export default function AddScheduleFlow({
             <div className="mt-3 rounded-xl bg-stone-50 p-3">
               {pasteBlocks.length === 0 ? (
                 <p className="text-sm text-ink-faint">
-                  No classes or times detected yet — make sure you copied the
+                  No classes or times detected yet. Make sure you copied the
                   whole schedule.
                 </p>
               ) : usingGeneric ? (
@@ -435,7 +516,7 @@ export default function AddScheduleFlow({
             <div className="mt-3 rounded-xl bg-stone-50 p-3">
               {icsBlocks.length === 0 ? (
                 <p className="text-sm text-ink-faint">
-                  No events found yet — check that this is a calendar export
+                  No events found yet. Check that this is a calendar export
                   (.ics) with timed events.
                 </p>
               ) : (
@@ -506,7 +587,7 @@ export default function AddScheduleFlow({
             Enter busy times by hand
           </label>
           <p className="mt-0.5 text-xs text-ink-faint">
-            Work, another school, appointments — anything that blocks your week.
+            Work, another school, appointments, anything that blocks your week.
           </p>
 
           <div className="mt-2 space-y-3">
@@ -594,6 +675,11 @@ export default function AddScheduleFlow({
                       End time must be after the start time.
                     </p>
                   )}
+                  {!badRange && rowTouched(r) && r.days.length === 0 && (
+                    <p className="mt-1.5 text-xs text-amber-700">
+                      Pick at least one day for this row
+                    </p>
+                  )}
                 </div>
               );
             })}
@@ -638,56 +724,76 @@ export default function AddScheduleFlow({
             Draw your busy times
           </label>
           <p className="mb-2 mt-0.5 text-xs text-ink-faint">
-            Fastest for irregular weeks — paint work shifts, practices,
+            Fastest for irregular weeks: paint work shifts, practices,
             anything.
           </p>
           <WeekPaintGrid initialBlocks={drawBlocks} onChange={setDrawBlocks} />
         </>
       )}
 
-      {/* Combined total, e.g. "12 from Quest + 4 from calendar + 2 manual". */}
+      {/* Combined breakdown, always shown once anything will be saved. */}
       {hasBlocks && (
-        <p className="mt-3 text-xs text-ink-faint">
-          {totalParts.length > 1
-            ? totalParts.join(" + ")
-            : `${allBlocks.length} block${allBlocks.length === 1 ? "" : "s"} total`}
+        <p className="mt-4 text-sm font-medium text-ink-soft">
+          Saving {allBlocks.length} busy time
+          {allBlocks.length === 1 ? "" : "s"}
+          {savingParts.length > 0 ? `: ${savingParts.join(" + ")}` : ""}
         </p>
       )}
 
-      <div className="mt-3 flex items-center gap-2 text-sm">
-        <label htmlFor="fw-tz" className="text-ink-faint">
-          Times are in
-        </label>
-        <select
-          id="fw-tz"
-          value={tz}
-          onChange={(e) => setTz(e.target.value)}
-          className="rounded-md border border-stone-200 bg-white px-2 py-1 text-sm text-ink outline-none transition focus:border-stone-400"
-        >
-          {tzOptions.map((z) => (
-            <option key={z} value={z}>
-              {tzLabel(z)}
-            </option>
-          ))}
-        </select>
+      {/* Timezone: automatic by default, one line with a reveal to change it. */}
+      <div className="mt-3 text-sm text-ink-faint">
+        {tzEditing ? (
+          <div className="flex items-center gap-2">
+            <label htmlFor="fw-tz">Times are in</label>
+            <select
+              id="fw-tz"
+              value={tz}
+              onChange={(e) => {
+                setTz(e.target.value);
+                setTzChanged(true);
+                setTzEditing(false);
+              }}
+              className="rounded-md border border-stone-200 bg-white px-2 py-1 text-sm text-ink outline-none transition focus:border-stone-400"
+            >
+              {tzOptions.map((z) => (
+                <option key={z} value={z}>
+                  {tzLabel(z)}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <span>
+            Times are in{" "}
+            <span className="font-medium text-ink-soft">{tzLabel(tz)}</span>
+            {tzChanged ? "" : " (detected)"}{" "}
+            <button
+              type="button"
+              onClick={() => setTzEditing(true)}
+              className="font-medium text-gold-700 underline underline-offset-2 hover:text-gold-600"
+            >
+              change
+            </button>
+          </span>
+        )}
       </div>
 
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
 
+      {triedSave && !canSubmit && (
+        <p className="mt-3 text-sm text-rose-600">{saveIssues.join(" ")}</p>
+      )}
+
       <button
         type="button"
         onClick={save}
-        disabled={saving || !name.trim() || !hasBlocks}
-        className="mt-4 w-full rounded-xl bg-gold-500 px-4 py-2.5 font-semibold text-white transition hover:bg-gold-600 disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={saving}
+        className="mt-4 w-full rounded-xl bg-gold-500 px-4 py-2.5 font-semibold text-white shadow-[0_1px_2px_rgba(6,78,59,0.2)] transition hover:bg-gold-600 hover:shadow-[0_2px_8px_rgba(6,78,59,0.25)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-[0_1px_2px_rgba(6,78,59,0.2)]"
       >
         {saving ? "Saving…" : "Save my schedule"}
       </button>
-      {!saving && (!name.trim() || !hasBlocks) && (
-        <p className="mt-2 text-center text-xs text-ink-faint">
-          {!name.trim()
-            ? "Enter your name above to save."
-            : "Nothing to save yet — paste, import, or add at least one busy time."}
-        </p>
+      {!saving && !canSubmit && helperText && (
+        <p className="mt-2 text-center text-xs text-ink-faint">{helperText}</p>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 // lib/types.ts
 import type { Block } from "@/lib/parseQuest";
+import type { Proposal } from "@/lib/proposals";
 
 export type { Block };
 
@@ -22,6 +23,7 @@ export type Group = {
 export type GroupResponse = {
   group: Group;
   members: PublicMember[];
+  proposals?: Proposal[];
 };
 
 // Fixed 10-colour palette, assigned by member count (index = count % 10).

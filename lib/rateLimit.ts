@@ -6,7 +6,7 @@ const hits = new Map<string, number[]>();
 
 export function rateLimit(key: string, limit: number, windowMs = 60_000): boolean {
   // Guard against unbounded growth from an endless stream of distinct keys
-  // (e.g. spoofed IPs) — an occasional early reset is an acceptable tradeoff
+  // (e.g. spoofed IPs), an occasional early reset is an acceptable tradeoff
   // for not needing a background sweep.
   if (hits.size > 5000) hits.clear();
 

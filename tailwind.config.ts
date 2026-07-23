@@ -1,8 +1,9 @@
 import type { Config } from "tailwindcss";
 
-// Design tokens. `stone` is remapped to a cool neutral (zinc) scale and `gold`
-// to a monochrome accent scale so the primary actions read near-black — the
-// only saturated colour in the UI is the green availability data itself.
+// Design tokens. `stone` is remapped to a cool neutral (zinc) scale; `gold` is
+// the accent ramp, remapped to a deep emerald green — the product's identity is
+// the green of "free time", so primary actions and key accents carry it. The
+// availability heatmap keeps Tailwind's default `green` scale for its data.
 const config: Config = {
   content: [
     "./app/**/*.{ts,tsx}",
@@ -25,14 +26,14 @@ const config: Config = {
           900: "#18181b",
         },
         gold: {
-          50: "#fafafa",
-          100: "#f4f4f5",
-          200: "#e4e4e7",
-          300: "#a1a1aa",
-          400: "#52525b",
-          500: "#18181b",
-          600: "#000000",
-          700: "#27272a",
+          50: "#ecfdf5",
+          100: "#d1fae5",
+          200: "#a7f3d0",
+          300: "#6ee7b7",
+          400: "#34d399",
+          500: "#047857",
+          600: "#065f46",
+          700: "#064e3b",
         },
         ink: {
           DEFAULT: "#18181b",

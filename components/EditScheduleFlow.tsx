@@ -114,7 +114,7 @@ export default function EditScheduleFlow({
           setPainted([]);
           setOpen(true);
         }}
-        className="w-full rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-sm font-medium text-ink transition hover:border-stone-500"
+        className="w-full rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-sm font-medium text-ink shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-stone-400 hover:text-ink"
       >
         Edit my schedule
       </button>
@@ -124,7 +124,7 @@ export default function EditScheduleFlow({
   const removedCount = member.schedule.length - kept.length;
 
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-4">
+    <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-ink">Edit your schedule</h3>
         <button
@@ -139,7 +139,7 @@ export default function EditScheduleFlow({
       {/* Existing blocks (labels preserved) */}
       {recurring.length === 0 && dated.length === 0 ? (
         <p className="mt-3 text-sm text-ink-faint">
-          Everything removed — paint new busy times below or save to clear your
+          Everything removed. Paint new busy times below or save to clear your
           schedule.
         </p>
       ) : (
@@ -210,7 +210,7 @@ export default function EditScheduleFlow({
         type="button"
         onClick={save}
         disabled={saving}
-        className="mt-4 w-full rounded-lg bg-ink px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-4 w-full rounded-lg bg-gold-500 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_1px_2px_rgba(6,78,59,0.2)] transition-colors hover:bg-gold-600 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {saving
           ? "Saving…"

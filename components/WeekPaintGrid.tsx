@@ -13,7 +13,7 @@ import {
 
 // Drag-to-paint week grid. Drag across cells to mark busy time; start a drag
 // on an already-painted cell to erase instead. Emits merged Block[] (one block
-// per contiguous run per day) via onChange. Pure pointer events — works with
+// per contiguous run per day) via onChange. Pure pointer events, works with
 // mouse and touch, and pointer capture keeps a drag alive outside the grid.
 
 const PAINT_LABEL = "Busy";
@@ -189,10 +189,10 @@ export default function WeekPaintGrid({
                   <div
                     key={cellKey(day, slot)}
                     style={{ gridRow: slot + 1, gridColumn: day + 1 }}
-                    className={`h-[16px] border-stone-100 ${
+                    className={`h-[16px] border-stone-100 transition-colors duration-100 ${
                       day > 0 ? "border-l" : ""
                     } ${slot > 0 ? (onHour ? "border-t border-t-stone-200" : "border-t") : ""} ${
-                      on ? "bg-ink" : "bg-white hover:bg-stone-50"
+                      on ? "fw-paint bg-gold-600" : "bg-white hover:bg-gold-50"
                     }`}
                   />
                 );

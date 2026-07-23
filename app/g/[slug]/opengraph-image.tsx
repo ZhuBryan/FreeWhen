@@ -1,7 +1,7 @@
 // app/g/[slug]/opengraph-image.tsx
 // Dynamic OG card: a mini heatmap of the group's weekly overlap. Falls back
 // to a plain branded card if Supabase isn't configured or the group/fetch
-// fails — link previews should never break the share flow.
+// fails, link previews should never break the share flow.
 import { ImageResponse } from "next/og";
 import { getSupabase } from "@/lib/supabase";
 import { buildGrid, DAY_NAMES } from "@/lib/schedule";

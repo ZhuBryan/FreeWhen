@@ -299,7 +299,7 @@ export function bestTimes(
   return windows.slice(0, limit);
 }
 
-// Members with no block overlapping [from, to) on `day` — used to show names
+// Members with no block overlapping [from, to) on `day`, used to show names
 // (not just counts) for a candidate window.
 export function freeMembersDuring(
   members: PublicMember[],
@@ -344,7 +344,7 @@ export function planRange(
       schedule: blocksForDate(m.schedule, date),
     }));
     // dayMembers only carry this weekday's blocks, so the other six weekdays
-    // read as fully free — keep only this date's windows, and pad the limit by
+    // read as fully free, keep only this date's windows, and pad the limit by
     // 6 so those six full-day runs can't crowd real results out.
     const windows = bestTimes(dayMembers, {
       minMinutes: opts.minMinutes,
@@ -377,7 +377,7 @@ export function minutesToLabel(mins: number): string {
   return `${h}:${m.toString().padStart(2, "0")} ${ap}`;
 }
 
-// "2:30–5:30 PM" — drops the first meridian when both sides share it.
+// "2:30–5:30 PM", drops the first meridian when both sides share it.
 export function formatRange(start: number, end: number): string {
   const a = minutesToLabel(start);
   const b = minutesToLabel(end);
@@ -391,4 +391,53 @@ export function formatRange(start: number, end: number): string {
 
 export function formatWindow(w: BestWindow): string {
   return `${DAY_NAMES_FULL[w.day]} · ${formatRange(w.start, w.end)}`;
+}
+
+// ---- shared classes --------------------------------------------------------
+
+// Recurring blocks two or more members hold identically. For every distinct
+// non-empty label other than the generic "Busy", we bucket recurring blocks
+// (no date) by exact (label, day, start, end); a label qualifies when any
+// bucket has 2+ members, and its `memberIds` is the union of members across
+// that label's qualifying buckets, ordered by their position in `members`.
+// Powers the "Same classes" section, so an exact time match is required.
+export function sharedLabels(
+  members: PublicMember[],
+): { label: string; memberIds: string[] }[] {
+  const order = new Map<string, number>();
+  members.forEach((m, i) => order.set(m.id, i));
+
+  // label -> exact-slot key -> set of member ids on that slot
+  const byLabel = new Map<string, Map<string, Set<string>>>();
+  for (const m of members) {
+    for (const b of m.schedule) {
+      if (b.date) continue; // recurring blocks only
+      const label = b.label.trim();
+      if (!label || label === "Busy") continue;
+      const key = `${label}|${b.day}|${b.start}|${b.end}`;
+      let buckets = byLabel.get(label);
+      if (!buckets) byLabel.set(label, (buckets = new Map()));
+      let ids = buckets.get(key);
+      if (!ids) buckets.set(key, (ids = new Set()));
+      ids.add(m.id);
+    }
+  }
+
+  const out: { label: string; memberIds: string[] }[] = [];
+  for (const [label, buckets] of byLabel) {
+    const shared = new Set<string>();
+    for (const ids of buckets.values()) {
+      if (ids.size >= 2) for (const id of ids) shared.add(id);
+    }
+    if (shared.size > 0) {
+      out.push({
+        label,
+        memberIds: [...shared].sort(
+          (a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0),
+        ),
+      });
+    }
+  }
+  out.sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
+  return out;
 }

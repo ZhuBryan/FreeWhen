@@ -15,8 +15,11 @@ import {
   formatWindow,
   minutesToLabel,
   mondayOfISO,
+  sharedLabels,
   todayISO,
   weekDatesISO,
+  weekdayForISODate,
+  DAY_NAMES,
   DAY_NAMES_FULL,
 } from "@/lib/schedule";
 import {
@@ -24,6 +27,7 @@ import {
   getMyMember,
   getViewPrefs,
   setViewPrefs,
+  setMyMember,
   clearMyMember,
 } from "@/lib/storage";
 import { subscribeToGroup } from "@/lib/realtime";
@@ -44,6 +48,8 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   const [me, setMe] = useState<{ id: string; token: string } | null>(null);
   const [live, setLive] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [feedCopied, setFeedCopied] = useState(false);
+  const [phoneCopied, setPhoneCopied] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -73,7 +79,17 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
 
   useEffect(() => {
     setCreatorToken(getCreatorToken(slug));
-    setMe(getMyMember(slug));
+    // A "use on my phone" link carries the edit token in the URL fragment
+    // (#me=id:token); the fragment never reaches the server or logs. Adopt that
+    // identity, persist it locally, then scrub the hash from the address bar.
+    const handoff = location.hash.match(/^#me=([^:]+):(.+)$/);
+    if (handoff) {
+      setMyMember(slug, handoff[1], handoff[2]);
+      history.replaceState(null, "", location.pathname);
+      setMe({ id: handoff[1], token: handoff[2] });
+    } else {
+      setMe(getMyMember(slug));
+    }
     const prefs = getViewPrefs(slug);
     if (prefs) {
       setDayStart(prefs.dayStart);
@@ -105,7 +121,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
     setViewPrefs(slug, { dayStart, dayEnd, minFree });
   }, [slug, prefsLoaded, dayStart, dayEnd, minFree]);
 
-  // Timezone every member's schedule is displayed in — the viewer's own
+  // Timezone every member's schedule is displayed in: the viewer's own
   // browser zone. Members with a different stored `tz` get their schedule
   // converted before any grid/planner math sees it.
   const viewerTz = useMemo(() => {
@@ -125,6 +141,10 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
       ),
     [data, viewerTz],
   );
+
+  // Classes two or more members share. Computed from the RAW (unconverted)
+  // schedules so timezone shifting can never break the exact time match.
+  const shared = useMemo(() => sharedLabels(data?.members ?? []), [data]);
 
   // Week-aware view: recurring blocks always apply; dated one-offs only count
   // in the week they fall in.
@@ -163,7 +183,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         }`,
     );
     const text = [
-      `${data?.group.name ?? "Group"} — best times, week of ${formatMonthDay(
+      `${data?.group.name ?? "Group"}: best times, week of ${formatMonthDay(
         weekStart,
       )}:`,
       ...lines,
@@ -173,6 +193,40 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard blocked */
+    }
+  }
+
+  // Copy a webcal:// subscribe URL for the live everyone-free feed.
+  async function copyFeed() {
+    const url = `webcal://${location.host}/api/groups/${slug}/feed.ics`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setFeedCopied(true);
+      setTimeout(() => setFeedCopied(false), 1600);
+    } catch {
+      /* clipboard blocked */
+    }
+  }
+
+  // Hand this browser's edit identity to another device. The token rides in the
+  // URL fragment so it never reaches the server or logs.
+  async function useOnPhone() {
+    if (!me) return;
+    const url = `${location.origin}/g/${slug}#me=${me.id}:${me.token}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "FreeWhen", url });
+      } catch {
+        /* share dismissed */
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setPhoneCopied(true);
+      setTimeout(() => setPhoneCopied(false), 2000);
     } catch {
       /* clipboard blocked */
     }
@@ -202,6 +256,28 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
     return isCreator || me?.id === m.id;
   }
 
+  async function rsvp(proposalId: string, response: "yes" | "no") {
+    if (!me) return;
+    const res = await fetch(`/api/proposals/${proposalId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "x-edit-token": me.token },
+      body: JSON.stringify({ response }),
+    });
+    if (res.ok) load();
+    else alert("Could not save your response.");
+  }
+
+  async function deleteProposal(proposalId: string) {
+    if (!creatorToken) return;
+    if (!confirm("Delete this proposal?")) return;
+    const res = await fetch(`/api/proposals/${proposalId}`, {
+      method: "DELETE",
+      headers: { "x-edit-token": creatorToken },
+    });
+    if (res.ok) load();
+    else alert("Could not delete proposal.");
+  }
+
   if (status === "loading") {
     return (
       <div className="mx-auto max-w-2xl px-5 py-20 text-center text-ink-faint">
@@ -219,7 +295,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         </p>
         <Link
           href="/"
-          className="mt-6 inline-block rounded-lg bg-ink px-4 py-2 font-medium text-white transition hover:bg-black"
+          className="mt-6 inline-block rounded-lg bg-gold-500 px-4 py-2 font-medium text-white shadow-[0_1px_2px_rgba(6,78,59,0.2)] transition hover:bg-gold-600 hover:shadow-[0_2px_8px_rgba(6,78,59,0.25)] active:scale-[0.98]"
         >
           Create a new group
         </Link>
@@ -245,16 +321,16 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">
+          <h1 className="text-3xl font-semibold tracking-tight text-ink">
             {data.group.name}
           </h1>
-          <p className="mt-1 flex items-center gap-2 text-sm text-ink-faint">
-            <span>
+          <p className="mt-1.5 flex items-center gap-2.5 text-sm text-ink-faint">
+            <span className="tabular-nums">
               {members.length} {members.length === 1 ? "person" : "people"}
             </span>
             {live && (
               <span
-                className="inline-flex items-center gap-1 text-xs font-medium text-green-700"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-green-700"
                 title="Updates appear instantly when anyone edits"
               >
                 <span className="relative flex h-1.5 w-1.5">
@@ -276,20 +352,23 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
             {members.map((m) => (
               <span
                 key={m.id}
-                className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white py-1 pl-2 pr-1.5 text-sm"
+                className="group inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white py-1 pl-1 pr-3 text-sm shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-stone-300"
               >
                 <span
-                  className="h-2 w-2 rounded-full"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold uppercase text-white"
                   style={{ backgroundColor: m.color }}
-                />
-                <span className="text-ink">{m.name}</span>
+                  aria-hidden
+                >
+                  {m.name.trim().charAt(0) || "?"}
+                </span>
+                <span className="font-medium text-ink">{m.name}</span>
                 {m.tz && m.tz !== viewerTz && (
                   <span className="text-[10px] text-ink-faint">
                     {m.tz.split("/").pop()?.replace(/_/g, " ")}
                   </span>
                 )}
                 {me?.id === m.id && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gold-600">
                     you
                   </span>
                 )}
@@ -298,7 +377,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
                     type="button"
                     onClick={() => removeMember(m)}
                     aria-label={`Remove ${m.name}`}
-                    className="flex h-4 w-4 items-center justify-center rounded text-ink-faint transition hover:bg-stone-100 hover:text-rose-600"
+                    className="-mr-1.5 flex h-5 w-5 items-center justify-center rounded-full text-ink-faint opacity-0 transition hover:bg-stone-100 hover:text-rose-600 focus:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-400 group-hover:opacity-100"
                   >
                     ×
                   </button>
@@ -307,14 +386,54 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
             ))}
           </div>
         ) : (
-          <div className="rounded-lg border border-dashed border-stone-300 bg-white p-6 text-center">
-            <p className="font-medium text-ink">No schedules yet</p>
+          <div className="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-center">
+            <p className="font-medium text-ink">Nobody here yet</p>
             <p className="mt-1 text-sm text-ink-soft">
               Add yours first, then share the link with your friends.
             </p>
           </div>
         )}
       </div>
+
+      {/* Same classes: labels 2+ members share at the exact same time */}
+      {members.length >= 2 && shared.length > 0 && (
+        <div className="mt-3 rounded-lg border border-stone-200 bg-white p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
+            Same classes
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {shared.map((s) => (
+              <li
+                key={s.label}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+              >
+                <span className="font-semibold text-ink">{s.label}</span>
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  {s.memberIds.map((id) => {
+                    const m = data.members.find((x) => x.id === id);
+                    if (!m) return null;
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1 text-ink-soft"
+                      >
+                        <span
+                          className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold uppercase text-white"
+                          style={{ backgroundColor: m.color }}
+                          aria-hidden
+                        >
+                          {m.name.trim().charAt(0) || "?"}
+                        </span>
+                        {m.name}
+                      </span>
+                    );
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Add / edit schedule */}
       <div className="mt-5 space-y-2">
@@ -325,12 +444,24 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
           return (
             myMember &&
             me && (
-              <EditScheduleFlow
-                key={myMember.id + String(myMember.schedule.length)}
-                member={myMember}
-                token={me.token}
-                onSaved={load}
-              />
+              <>
+                <EditScheduleFlow
+                  key={myMember.id + String(myMember.schedule.length)}
+                  member={myMember}
+                  token={me.token}
+                  onSaved={load}
+                />
+                <button
+                  type="button"
+                  onClick={useOnPhone}
+                  title="Open your schedule on another device, no re-entering it"
+                  className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:border-stone-400 hover:text-ink"
+                >
+                  {phoneCopied
+                    ? "Link copied, open it on your phone"
+                    : "Use on my phone"}
+                </button>
+              </>
             )
           );
         })()}
@@ -348,8 +479,11 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
       {/* Overlap + best times + planner */}
       {hasMembers && (
         <>
-          <section className="mt-10">
-            <h2 className="text-base font-semibold tracking-tight text-ink">
+          <section className="fw-fade mt-10" style={{ animationDelay: "0ms" }}>
+            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
+              Availability
+            </p>
+            <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
               Weekly overlap
             </h2>
             <p className="mt-0.5 text-sm text-ink-faint">
@@ -431,7 +565,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
               </select>
             </div>
 
-            <div className="mt-3 rounded-lg border border-stone-200 bg-white p-3 sm:p-4">
+            <div className="mt-3 rounded-xl border border-stone-200 bg-white p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)] sm:p-4">
               <OverlapGrid
                 members={effectiveMembers}
                 weekDates={weekDatesISO(weekStart)}
@@ -441,16 +575,21 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
             </div>
           </section>
 
-          <section className="mt-10">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-base font-semibold tracking-tight text-ink">
-                Best times · week of {formatMonthDay(weekStart)}
-              </h2>
+          <section className="fw-fade mt-10" style={{ animationDelay: "60ms" }}>
+            <div className="flex items-end justify-between gap-2">
+              <div>
+                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
+                  Recommended
+                </p>
+                <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
+                  Best times · week of {formatMonthDay(weekStart)}
+                </h2>
+              </div>
               {windows.length > 0 && (
                 <button
                   type="button"
                   onClick={copyBestTimes}
-                  className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
+                  className="shrink-0 rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-ink-soft transition-colors hover:border-stone-400 hover:text-ink"
                 >
                   {copied ? "Copied" : "Copy for group chat"}
                 </button>
@@ -483,11 +622,14 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
               <span>is free.</span>
             </div>
             {windows.length > 0 ? (
-              <ul className="mt-3 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
+              <ul className="mt-3 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 {windows.map((w, i) => (
-                  <li key={i} className="flex items-center gap-3 px-4 py-3">
-                    <span className="w-5 shrink-0 text-sm font-semibold tabular-nums text-ink-faint">
-                      {i + 1}
+                  <li
+                    key={i}
+                    className="group/row flex items-center gap-3 px-4 py-3 transition-colors hover:bg-gold-50"
+                  >
+                    <span className="w-6 shrink-0 font-mono text-xs font-medium tabular-nums text-ink-faint transition-colors group-hover/row:text-gold-600">
+                      {String(i + 1).padStart(2, "0")}
                     </span>
                     <span className="text-sm font-medium tabular-nums text-ink">
                       {formatWindow(w)}
@@ -495,7 +637,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
                     <span
                       className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
                         w.free === w.total
-                          ? "bg-green-100 text-green-800"
+                          ? "bg-gold-50 text-gold-700 ring-1 ring-gold-200"
                           : "bg-stone-100 text-ink-soft"
                       }`}
                     >
@@ -519,15 +661,134 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
             )}
           </section>
 
-          <section className="mt-10">
-            <h2 className="text-base font-semibold tracking-tight text-ink">
-              Plan something
-            </h2>
+          {(data.proposals ?? []).length > 0 && (
+            <section
+              className="fw-fade mt-10"
+              style={{ animationDelay: "120ms" }}
+            >
+              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
+                Proposed
+              </p>
+              <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
+                Proposed hangouts
+              </h2>
+              <ul className="mt-3 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                {(data.proposals ?? []).map((p) => {
+                  const wd = weekdayForISODate(p.date);
+                  const yesVoters = p.rsvps
+                    .filter((r) => r.response === "yes")
+                    .map((r) => members.find((m) => m.id === r.member_id))
+                    .filter((m): m is PublicMember => Boolean(m));
+                  const myResponse = me
+                    ? p.rsvps.find((r) => r.member_id === me.id)?.response
+                    : undefined;
+                  return (
+                    <li key={p.id} className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="text-sm font-semibold tabular-nums text-ink">
+                          {wd !== null ? DAY_NAMES[wd] : ""}{" "}
+                          <span className="font-normal text-ink-faint">
+                            {formatMonthDay(p.date)}
+                          </span>
+                        </span>
+                        <span className="text-sm font-medium tabular-nums text-ink">
+                          {formatRange(p.start, p.end)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          {yesVoters.map((m) => (
+                            <span
+                              key={m.id}
+                              className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold uppercase text-white"
+                              style={{ backgroundColor: m.color }}
+                              title={m.name}
+                              aria-hidden
+                            >
+                              {m.name.trim().charAt(0) || "?"}
+                            </span>
+                          ))}
+                          <span className="text-xs text-ink-faint">
+                            {yesVoters.length} going
+                          </span>
+                        </span>
+                        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                          {me && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => rsvp(p.id, "yes")}
+                                className={`rounded-md px-2 py-1 text-xs font-medium transition ${
+                                  myResponse === "yes"
+                                    ? "bg-gold-500 text-white"
+                                    : "border border-stone-200 text-ink-soft hover:border-stone-400 hover:text-ink"
+                                }`}
+                              >
+                                Yes
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => rsvp(p.id, "no")}
+                                className={`rounded-md px-2 py-1 text-xs font-medium transition ${
+                                  myResponse === "no"
+                                    ? "bg-stone-700 text-white"
+                                    : "border border-stone-200 text-ink-soft hover:border-stone-400 hover:text-ink"
+                                }`}
+                              >
+                                No
+                              </button>
+                            </>
+                          )}
+                          {isCreator && (
+                            <button
+                              type="button"
+                              onClick={() => deleteProposal(p.id)}
+                              aria-label="Delete proposal"
+                              className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-stone-100 hover:text-rose-600"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
+          <section
+            className="fw-fade mt-10"
+            style={{ animationDelay: "180ms" }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
+                  Planner
+                </p>
+                <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
+                  Plan something
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={copyFeed}
+                title="Subscribe in Google/Apple Calendar, updates as schedules change"
+                className="shrink-0 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:border-stone-400 hover:text-ink"
+              >
+                {feedCopied ? "Link copied" : "Calendar feed"}
+              </button>
+            </div>
             <p className="mb-3 mt-0.5 text-sm text-ink-faint">
-              Scan the coming days for a slot that fits — then send it to the
+              Scan the coming days for a slot that fits, then send it to the
               group chat or straight to a calendar.
             </p>
-            <PlannerPanel members={members} groupName={data.group.name} />
+            <PlannerPanel
+              members={members}
+              groupName={data.group.name}
+              slug={slug}
+              myToken={me?.token ?? null}
+              onProposed={load}
+            />
           </section>
         </>
       )}
