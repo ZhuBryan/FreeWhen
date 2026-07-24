@@ -31,6 +31,7 @@ import {
 } from "@/lib/storage";
 import { subscribeToGroup } from "@/lib/realtime";
 import { convertBlocks } from "@/lib/timezone";
+import LeafSprig from "@/components/LeafSprig";
 import OverlapGrid from "@/components/OverlapGrid";
 import AddScheduleFlow from "@/components/AddScheduleFlow";
 import EditScheduleFlow from "@/components/EditScheduleFlow";
@@ -368,7 +369,10 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
 
   const availabilitySection = (
-    <section className="fw-fade" style={{ animationDelay: "0ms" }}>
+    <section
+      className="fw-fade border-t border-stone-200/70 pt-8"
+      style={{ animationDelay: "0ms" }}
+    >
       <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
         Availability
       </p>
@@ -385,7 +389,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
           type="button"
           onClick={() => setWeekStart((w) => addWeeksISO(w, -1))}
           aria-label="Previous week"
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-stone-200 bg-white text-ink-soft transition hover:border-stone-400 hover:text-ink"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-lg text-ink-soft transition hover:bg-stone-100 hover:text-ink"
         >
           ‹
         </button>
@@ -407,7 +411,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
           type="button"
           onClick={() => setWeekStart((w) => addWeeksISO(w, 1))}
           aria-label="Next week"
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-stone-200 bg-white text-ink-soft transition hover:border-stone-400 hover:text-ink"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-lg text-ink-soft transition hover:bg-stone-100 hover:text-ink"
         >
           ›
         </button>
@@ -490,7 +494,10 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
 
   const bestTimesSection = (
-    <section className="fw-fade mt-10" style={{ animationDelay: "60ms" }}>
+    <section
+      className="fw-fade mt-14 border-t border-stone-200/70 pt-8"
+      style={{ animationDelay: "60ms" }}
+    >
       <div className="flex items-end justify-between gap-2">
         <div>
           <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
@@ -579,7 +586,10 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
 
   const proposalsSection = (data.proposals ?? []).length > 0 && (
-    <section className="fw-fade mt-10" style={{ animationDelay: "120ms" }}>
+    <section
+      className="fw-fade mt-14 border-t border-stone-200/70 pt-8"
+      style={{ animationDelay: "120ms" }}
+    >
       <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
         Proposed
       </p>
@@ -673,7 +683,10 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
 
   const plannerSection = (
-    <section className="fw-fade mt-10" style={{ animationDelay: "180ms" }}>
+    <section
+      className="fw-fade mt-14 border-t border-stone-200/70 pt-8"
+      style={{ animationDelay: "180ms" }}
+    >
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
@@ -709,7 +722,12 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   return (
     <div className="mx-auto max-w-2xl px-5 pb-20 pt-8">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="relative flex items-start justify-between gap-3 overflow-hidden">
+        {/* A single sprig tucked behind the share action, low enough to read as
+            texture on the paper rather than an illustration. */}
+        <LeafSprig
+          className="pointer-events-none absolute -right-8 -top-12 -z-10 h-36 rotate-[16deg] text-gold-500 opacity-[0.05]"
+        />
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-ink">
             {data.group.name}
@@ -742,7 +760,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
             {members.map((m) => (
               <span
                 key={m.id}
-                className="group inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white py-1 pl-1 pr-3 text-sm shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-stone-300"
+                className="group inline-flex items-center gap-2 rounded-full border border-stone-200 bg-stone-50 py-1 pl-1 pr-3 text-sm transition-colors hover:border-stone-300 hover:bg-white"
               >
                 <span
                   className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold uppercase text-white"
@@ -777,6 +795,9 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-center">
+            <LeafSprig
+              className="pointer-events-none mx-auto mb-2 h-9 text-gold-500 opacity-[0.15]"
+            />
             <p className="font-medium text-ink">Nobody here yet</p>
             <p className="mt-1 text-sm text-ink-soft">
               Add yours first, then share the link with your friends.
@@ -833,7 +854,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
       {/* Answer-first once you've saved; action-first until then. Each state
           leaves exactly one obvious next step. */}
       {hasSaved && hasMembers ? (
-        <div className="mt-10">
+        <div className="mt-12">
           {availabilitySection}
           {bestTimesSection}
           {compactActionRow}
@@ -844,7 +865,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         <>
           {addPrimaryBlock}
           {hasMembers && (
-            <div className="mt-10">
+            <div className="mt-12">
               {availabilitySection}
               {bestTimesSection}
               {proposalsSection}

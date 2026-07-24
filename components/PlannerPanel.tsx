@@ -149,8 +149,9 @@ export default function PlannerPanel({
 
   return (
     <div>
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+      {/* Controls: one quiet toolbar so the five inputs read as a single
+          control surface rather than five floating widgets. */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-stone-50 p-2 text-sm">
         <input
           type="date"
           aria-label="Start date"

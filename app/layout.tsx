@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
+import LeafSprig from "@/components/LeafSprig";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -59,6 +60,9 @@ export default function RootLayout({
           </header>
           <main className="flex-1">{children}</main>
           <footer className="border-t border-stone-200/80 px-4 py-6 text-center text-xs text-ink-faint">
+            <LeafSprig
+              className="pointer-events-none mx-auto mb-2 h-6 text-gold-500 opacity-[0.18]"
+            />
             Built at UWaterloo · works for any campus · not affiliated with the
             University of Waterloo
           </footer>

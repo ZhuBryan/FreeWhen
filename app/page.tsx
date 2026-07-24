@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import LeafSprig from "@/components/LeafSprig";
 
 // Static product preview: a week of overlap data baked in so the landing page
 // shows the actual output (heatmap + best window) before anyone signs up.
@@ -84,10 +85,19 @@ export default function LandingPage() {
   return (
     <div className="mx-auto max-w-4xl px-5 pb-20 pt-12 sm:pt-16">
       {/* Hero */}
-      <div className="relative">
+      <div className="relative overflow-hidden">
         <div
           className="hero-grid pointer-events-none absolute -inset-x-16 -top-24 bottom-0 -z-10"
           aria-hidden
+        />
+        {/* Botanical accents: they peek from the edges, cropped by the hero's
+            overflow, and sit behind the opaque preview card so they read as
+            paper texture rather than illustration. */}
+        <LeafSprig
+          className="pointer-events-none absolute -right-16 -top-12 -z-10 hidden h-80 rotate-[18deg] text-gold-500 opacity-[0.07] sm:block"
+        />
+        <LeafSprig
+          className="pointer-events-none absolute -bottom-10 -left-14 -z-10 h-44 -rotate-[26deg] scale-x-[-1] text-gold-500 opacity-[0.06]"
         />
         <div className="grid items-center gap-10 sm:grid-cols-[1.05fr_0.95fr] sm:gap-12">
           {/* Left: pitch + form */}
@@ -220,10 +230,7 @@ export default function LandingPage() {
               d: "A live heatmap of free time, the best windows to meet, and days that fit an event.",
             },
           ].map((s) => (
-            <li
-              key={s.n}
-              className="rounded-xl border border-stone-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
-            >
+            <li key={s.n} className="border-t border-stone-300 pt-4">
               <span className="font-mono text-xs font-medium text-gold-600">
                 {s.n}
               </span>
