@@ -51,6 +51,11 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   const [feedCopied, setFeedCopied] = useState(false);
   const [phoneCopied, setPhoneCopied] = useState(false);
   const [hoursEditing, setHoursEditing] = useState(false);
+  // Which view is on top. The page is tabbed rather than one long scroll, so
+  // planning is always one click away. Overlap (the heatmap) is the default.
+  const [activeTab, setActiveTab] = useState<
+    "overlap" | "best" | "plan" | "proposals"
+  >("overlap");
 
   const load = useCallback(async () => {
     try {
@@ -345,7 +350,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   // Once saved, the same actions collapse into one quiet row that sits below
   // the answer instead of competing with it.
   const compactActionRow = myMember && me && (
-    <div className="mt-8 flex flex-wrap items-center gap-2">
+    <div className="mt-6 flex flex-wrap items-center gap-2">
       <EditScheduleFlow
         key={myMember.id + String(myMember.schedule.length)}
         member={myMember}
@@ -369,10 +374,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
 
   const availabilitySection = (
-    <section
-      className="fw-fade border-t border-stone-200/70 pt-8"
-      style={{ animationDelay: "0ms" }}
-    >
+    <section className="fw-fade">
       <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
         Availability
       </p>
@@ -494,10 +496,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
 
   const bestTimesSection = (
-    <section
-      className="fw-fade mt-14 border-t border-stone-200/70 pt-8"
-      style={{ animationDelay: "60ms" }}
-    >
+    <section className="fw-fade">
       <div className="flex items-end justify-between gap-2">
         <div>
           <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
@@ -586,10 +585,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
 
   const proposalsSection = (data.proposals ?? []).length > 0 && (
-    <section
-      className="fw-fade mt-14 border-t border-stone-200/70 pt-8"
-      style={{ animationDelay: "120ms" }}
-    >
+    <section className="fw-fade">
       <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
         Proposed
       </p>
@@ -683,10 +679,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
 
   const plannerSection = (
-    <section
-      className="fw-fade mt-14 border-t border-stone-200/70 pt-8"
-      style={{ animationDelay: "180ms" }}
-    >
+    <section className="fw-fade">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
@@ -717,6 +710,93 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         onProposed={load}
       />
     </section>
+  );
+
+  // Tab model. Proposals only earn a tab once one exists; it carries a small
+  // count badge. If the last proposal is deleted while that tab is open we fall
+  // back to Overlap so no dead panel is shown.
+  const proposalCount = (data.proposals ?? []).length;
+  const showProposalsTab = proposalCount > 0;
+  const tabs: { key: typeof activeTab; label: string; badge?: number }[] = [
+    { key: "overlap", label: "Overlap" },
+    { key: "best", label: "Best times" },
+    { key: "plan", label: "Plan" },
+    ...(showProposalsTab
+      ? [
+          {
+            key: "proposals" as typeof activeTab,
+            label: "Proposals",
+            badge: proposalCount,
+          },
+        ]
+      : []),
+  ];
+  const effectiveTab =
+    activeTab === "proposals" && !showProposalsTab ? "overlap" : activeTab;
+
+  const tabBar = (
+    <div
+      role="tablist"
+      aria-label="Group views"
+      className="grid-scroll -mx-5 mt-6 flex gap-1 overflow-x-auto border-b border-stone-200 px-5"
+    >
+      {tabs.map((t, i) => {
+        const active = effectiveTab === t.key;
+        return (
+          <button
+            key={t.key}
+            id={`fw-tab-${t.key}`}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            aria-controls={`fw-panel-${t.key}`}
+            tabIndex={active ? 0 : -1}
+            onClick={() => setActiveTab(t.key)}
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+              e.preventDefault();
+              const dir = e.key === "ArrowRight" ? 1 : -1;
+              const next = tabs[(i + dir + tabs.length) % tabs.length];
+              setActiveTab(next.key);
+              document.getElementById(`fw-tab-${next.key}`)?.focus();
+            }}
+            className={`relative -mb-px flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1.5 text-sm font-medium transition-colors focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 ${
+              active
+                ? "border-gold-600 text-gold-600"
+                : "border-transparent text-ink-faint hover:text-ink"
+            }`}
+          >
+            {t.label}
+            {t.badge ? (
+              <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-gold-100 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-gold-700">
+                {t.badge}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const activePanel = (
+    <div
+      role="tabpanel"
+      id={`fw-panel-${effectiveTab}`}
+      aria-labelledby={`fw-tab-${effectiveTab}`}
+      className="mt-6"
+    >
+      {effectiveTab === "overlap" && availabilitySection}
+      {effectiveTab === "best" && bestTimesSection}
+      {effectiveTab === "plan" && plannerSection}
+      {effectiveTab === "proposals" && proposalsSection}
+    </div>
+  );
+
+  const tabbedViews = hasMembers && (
+    <>
+      {tabBar}
+      {activePanel}
+    </>
   );
 
   return (
@@ -851,29 +931,11 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         </div>
       )}
 
-      {/* Answer-first once you've saved; action-first until then. Each state
-          leaves exactly one obvious next step. */}
-      {hasSaved && hasMembers ? (
-        <div className="mt-12">
-          {availabilitySection}
-          {bestTimesSection}
-          {compactActionRow}
-          {proposalsSection}
-          {plannerSection}
-        </div>
-      ) : (
-        <>
-          {addPrimaryBlock}
-          {hasMembers && (
-            <div className="mt-12">
-              {availabilitySection}
-              {bestTimesSection}
-              {proposalsSection}
-              {plannerSection}
-            </div>
-          )}
-        </>
-      )}
+      {/* Actions stay above the fold: a quiet action row once you've saved, a
+          big primary CTA until then. Either way the tabbed views sit directly
+          below so the heatmap and planning are never a long scroll away. */}
+      {hasSaved ? compactActionRow : addPrimaryBlock}
+      {tabbedViews}
     </div>
   );
 }

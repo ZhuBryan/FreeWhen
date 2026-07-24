@@ -49,11 +49,22 @@ test("group page renders schedule data", async ({ page }) => {
 
   await expect(page.getByText("Alex")).toBeVisible();
   await expect(page.getByText("Sam")).toBeVisible();
+
+  // Tabbed navigation: the views no longer stack in one scroll. Overlap is the
+  // default tab, so the heatmap and its legend are visible on load.
   await expect(
     page.getByRole("heading", { name: "Weekly overlap" }),
   ).toBeVisible();
   await expect(page.getByText("All free")).toBeVisible();
-  await expect(page.getByText(/Best times/)).toBeVisible();
+
+  // Best times is one click away, not a scroll.
+  await page.getByRole("tab", { name: "Best times" }).click();
+  await expect(
+    page.getByRole("heading", { name: /Best times/ }),
+  ).toBeVisible();
+
+  // Planning is likewise a single tap.
+  await page.getByRole("tab", { name: "Plan" }).click();
   await expect(
     page.getByRole("heading", { name: "Plan something" }),
   ).toBeVisible();
