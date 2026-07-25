@@ -94,10 +94,10 @@ export default function LandingPage() {
             overflow, and sit behind the opaque preview card so they read as
             paper texture rather than illustration. */}
         <LeafSprig
-          className="pointer-events-none absolute -right-16 -top-12 -z-10 hidden h-80 rotate-[18deg] text-gold-500 opacity-[0.07] sm:block"
+          className="pointer-events-none absolute -right-16 -top-12 -z-10 hidden h-80 rotate-[18deg] text-gold-500 opacity-[0.14] sm:block"
         />
         <LeafSprig
-          className="pointer-events-none absolute -bottom-10 -left-14 -z-10 h-44 -rotate-[26deg] scale-x-[-1] text-gold-500 opacity-[0.06]"
+          className="pointer-events-none absolute -bottom-10 -left-14 -z-10 h-44 -rotate-[26deg] scale-x-[-1] text-gold-500 opacity-[0.11]"
         />
         <div className="grid items-center gap-10 sm:grid-cols-[1.05fr_0.95fr] sm:gap-12">
           {/* Left: pitch + form */}

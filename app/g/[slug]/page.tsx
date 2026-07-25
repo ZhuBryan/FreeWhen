@@ -800,13 +800,18 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
 
   return (
-    <div className="mx-auto max-w-2xl px-5 pb-20 pt-8">
+    <div className="relative mx-auto max-w-2xl overflow-hidden px-5 pb-20 pt-8">
+      {/* A large sprig climbing the right edge of the page, cropped by overflow
+          so it reads as paper texture behind the content. */}
+      <LeafSprig
+        className="pointer-events-none absolute -right-20 top-40 -z-10 hidden h-[30rem] rotate-[8deg] text-gold-500 opacity-[0.06] sm:block"
+      />
       {/* Header */}
       <div className="relative flex items-start justify-between gap-3 overflow-hidden">
         {/* A single sprig tucked behind the share action, low enough to read as
             texture on the paper rather than an illustration. */}
         <LeafSprig
-          className="pointer-events-none absolute -right-8 -top-12 -z-10 h-36 rotate-[16deg] text-gold-500 opacity-[0.05]"
+          className="pointer-events-none absolute -right-8 -top-12 -z-10 h-36 rotate-[16deg] text-gold-500 opacity-[0.1]"
         />
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-ink">
@@ -876,7 +881,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         ) : (
           <div className="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-center">
             <LeafSprig
-              className="pointer-events-none mx-auto mb-2 h-9 text-gold-500 opacity-[0.15]"
+              className="pointer-events-none mx-auto mb-2 h-12 text-gold-500 opacity-[0.35]"
             />
             <p className="font-medium text-ink">Nobody here yet</p>
             <p className="mt-1 text-sm text-ink-soft">
