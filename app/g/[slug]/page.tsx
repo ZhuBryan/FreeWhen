@@ -56,6 +56,18 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   const [activeTab, setActiveTab] = useState<
     "overlap" | "best" | "plan" | "proposals"
   >("overlap");
+  // The webcal:// subscribe URL for the live feed. Built client-side once the
+  // page mounts so it can be shown in a readonly field, not just copied blind.
+  const [feedUrl, setFeedUrl] = useState("");
+  // In-app confirmation dialog, used in place of the browser's window.confirm().
+  const [confirmState, setConfirmState] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
+  // Transient error banner, used in place of window.alert().
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -126,6 +138,28 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
     if (!prefsLoaded) return;
     setViewPrefs(slug, { dayStart, dayEnd, minFree });
   }, [slug, prefsLoaded, dayStart, dayEnd, minFree]);
+
+  // Build the calendar subscribe URL once we have a host to read from.
+  useEffect(() => {
+    setFeedUrl(`webcal://${location.host}/api/groups/${slug}/feed.ics`);
+  }, [slug]);
+
+  // Dismiss the confirm dialog on Escape.
+  useEffect(() => {
+    if (!confirmState) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setConfirmState(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [confirmState]);
+
+  // Clear the error banner after a short delay.
+  useEffect(() => {
+    if (!errorMsg) return;
+    const t = setTimeout(() => setErrorMsg(null), 3000);
+    return () => clearTimeout(t);
+  }, [errorMsg]);
 
   // Timezone every member's schedule is displayed in: the viewer's own
   // browser zone. Members with a different stored `tz` get their schedule
@@ -206,7 +240,7 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
 
   // Copy a webcal:// subscribe URL for the live everyone-free feed.
   async function copyFeed() {
-    const url = `webcal://${location.host}/api/groups/${slug}/feed.ics`;
+    const url = feedUrl || `webcal://${location.host}/api/groups/${slug}/feed.ics`;
     try {
       await navigator.clipboard.writeText(url);
       setFeedCopied(true);
@@ -242,20 +276,26 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
     const isMe = me?.id === m.id;
     const token = isMe ? me?.token : creatorToken;
     if (!token) return;
-    if (!confirm(`Remove ${m.name} from this group?`)) return;
-    const res = await fetch(`/api/members/${m.id}`, {
-      method: "DELETE",
-      headers: { "x-edit-token": token },
+    setConfirmState({
+      title: "Remove member",
+      message: `Remove ${m.name} from this group? Their schedule will be deleted.`,
+      confirmLabel: "Remove",
+      onConfirm: async () => {
+        const res = await fetch(`/api/members/${m.id}`, {
+          method: "DELETE",
+          headers: { "x-edit-token": token },
+        });
+        if (res.ok) {
+          if (isMe) {
+            clearMyMember(slug);
+            setMe(null);
+          }
+          load();
+        } else {
+          setErrorMsg("Could not remove member.");
+        }
+      },
     });
-    if (res.ok) {
-      if (isMe) {
-        clearMyMember(slug);
-        setMe(null);
-      }
-      load();
-    } else {
-      alert("Could not remove member.");
-    }
   }
 
   function canRemove(m: PublicMember): boolean {
@@ -270,18 +310,24 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
       body: JSON.stringify({ response }),
     });
     if (res.ok) load();
-    else alert("Could not save your response.");
+    else setErrorMsg("Could not save your response.");
   }
 
   async function deleteProposal(proposalId: string) {
     if (!creatorToken) return;
-    if (!confirm("Delete this proposal?")) return;
-    const res = await fetch(`/api/proposals/${proposalId}`, {
-      method: "DELETE",
-      headers: { "x-edit-token": creatorToken },
+    setConfirmState({
+      title: "Delete proposal",
+      message: "Delete this proposal? This cannot be undone.",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        const res = await fetch(`/api/proposals/${proposalId}`, {
+          method: "DELETE",
+          headers: { "x-edit-token": creatorToken },
+        });
+        if (res.ok) load();
+        else setErrorMsg("Could not delete proposal.");
+      },
     });
-    if (res.ok) load();
-    else alert("Could not delete proposal.");
   }
 
   if (status === "loading") {
@@ -680,24 +726,12 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
 
   const plannerSection = (
     <section className="fw-fade">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
-            Planner
-          </p>
-          <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
-            Plan something
-          </h2>
-        </div>
-        <button
-          type="button"
-          onClick={copyFeed}
-          title="Subscribe in Google/Apple Calendar, updates as schedules change"
-          className="shrink-0 text-xs font-medium text-ink-faint underline-offset-2 transition-colors hover:text-ink hover:underline"
-        >
-          {feedCopied ? "Link copied" : "Calendar feed"}
-        </button>
-      </div>
+      <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
+        Planner
+      </p>
+      <h2 className="mt-1 text-[15px] font-semibold tracking-tight text-ink">
+        Plan something
+      </h2>
       <p className="mb-3 mt-0.5 text-sm text-ink-faint">
         Scan the coming days for a slot that fits, then send it to the group
         chat or straight to a calendar.
@@ -709,6 +743,35 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         myToken={me?.token ?? null}
         onProposed={load}
       />
+
+      {/* Subscribe: a clear, self-explanatory affordance for the live feed of
+          everyone's free times, in place of a lone quiet text link. */}
+      <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50/60 p-4">
+        <p className="text-sm font-semibold text-ink">
+          Subscribe to this calendar
+        </p>
+        <p className="mt-0.5 text-sm text-ink-faint">
+          Get everyone&apos;s free times in Google or Apple Calendar, updates
+          automatically.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            readOnly
+            value={feedUrl}
+            aria-label="Calendar subscribe link"
+            onFocus={(e) => e.currentTarget.select()}
+            className="min-w-0 flex-1 rounded-md border border-stone-200 bg-white px-2.5 py-1.5 font-mono text-xs text-ink-soft outline-none transition focus:border-stone-400"
+          />
+          <button
+            type="button"
+            onClick={copyFeed}
+            className="shrink-0 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
+          >
+            {feedCopied ? "Copied" : "Copy link"}
+          </button>
+        </div>
+      </div>
     </section>
   );
 
@@ -792,15 +855,32 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
     </div>
   );
 
-  const tabbedViews = hasMembers && (
-    <>
+  // Below lg the answer area is a tab bar with one panel at a time (the
+  // original single-column behavior). This branch is CSS-hidden at lg and up.
+  const mobileTabbedViews = hasMembers && (
+    <div className="lg:hidden">
       {tabBar}
       {activePanel}
-    </>
+    </div>
+  );
+
+  // At lg and up the whole answer area is a single two-column layout with no
+  // tabs: the overlap heatmap on the left, and best times / planner / proposals
+  // stacked on the right. Everything is visible at once. Reuses the same section
+  // markup as the tabbed view; only one branch is ever visible at a time.
+  const desktopColumns = hasMembers && (
+    <div className="mt-8 hidden gap-8 lg:grid lg:grid-cols-5">
+      <div className="lg:col-span-3">{availabilitySection}</div>
+      <div className="flex flex-col gap-8 lg:col-span-2">
+        {bestTimesSection}
+        {plannerSection}
+        {proposalsSection}
+      </div>
+    </div>
   );
 
   return (
-    <div className="relative mx-auto max-w-2xl overflow-hidden px-5 pb-20 pt-8">
+    <div className="relative mx-auto max-w-2xl overflow-hidden px-5 pb-20 pt-8 lg:max-w-5xl">
       {/* A large sprig climbing the right edge of the page, cropped by overflow
           so it reads as paper texture behind the content. */}
       <LeafSprig
@@ -940,7 +1020,67 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
           big primary CTA until then. Either way the tabbed views sit directly
           below so the heatmap and planning are never a long scroll away. */}
       {hasSaved ? compactActionRow : addPrimaryBlock}
-      {tabbedViews}
+      {/* Desktop two-column view is rendered first so that headings shared by
+          both branches resolve to the visible (desktop) element first. */}
+      {desktopColumns}
+      {mobileTabbedViews}
+
+      {/* On-brand confirmation dialog, replacing window.confirm(). */}
+      {confirmState && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setConfirmState(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="fw-confirm-title"
+            className="w-full max-w-sm rounded-xl bg-white p-5 shadow-[0_8px_40px_rgba(0,0,0,0.18)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="fw-confirm-title"
+              className="text-base font-semibold text-ink"
+            >
+              {confirmState.title}
+            </h2>
+            <p className="mt-1.5 text-sm text-ink-soft">
+              {confirmState.message}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmState(null)}
+                className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                ref={(el) => el?.focus()}
+                onClick={() => {
+                  const c = confirmState;
+                  setConfirmState(null);
+                  c.onConfirm();
+                }}
+                className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-rose-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400"
+              >
+                {confirmState.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transient error banner, replacing window.alert(). */}
+      {errorMsg && (
+        <div
+          role="alert"
+          className="fixed left-1/2 top-4 z-50 -translate-x-1/2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-[0_4px_16px_rgba(0,0,0,0.18)]"
+        >
+          {errorMsg}
+        </div>
+      )}
     </div>
   );
 }

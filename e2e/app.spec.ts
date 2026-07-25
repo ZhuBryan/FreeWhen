@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// Route-mocked group fixture — no database involved. Recurring blocks (no
+// Route-mocked group fixture, no database involved. Recurring blocks (no
 // `date`) so they show up regardless of which week the grid defaults to.
 const GROUP = {
   group: {
@@ -50,23 +50,21 @@ test("group page renders schedule data", async ({ page }) => {
   await expect(page.getByText("Alex")).toBeVisible();
   await expect(page.getByText("Sam")).toBeVisible();
 
-  // Tabbed navigation: the views no longer stack in one scroll. Overlap is the
-  // default tab, so the heatmap and its legend are visible on load.
+  // At Playwright's default viewport (~1280, at/above the lg breakpoint) the
+  // answer area is a two-column layout that shows every view at once, so no tab
+  // clicks are needed. The mobile tab bar is CSS-hidden at this width. Both the
+  // desktop and mobile branches reuse the same section markup, so a heading can
+  // match twice in the DOM (one hidden); assert on the first (desktop, visible)
+  // match. Below lg the tabbed single-panel behavior is unchanged.
   await expect(
-    page.getByRole("heading", { name: "Weekly overlap" }),
+    page.getByRole("heading", { name: "Weekly overlap" }).first(),
   ).toBeVisible();
-  await expect(page.getByText("All free")).toBeVisible();
-
-  // Best times is one click away, not a scroll.
-  await page.getByRole("tab", { name: "Best times" }).click();
+  await expect(page.getByText("All free").first()).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: /Best times/ }),
+    page.getByRole("heading", { name: /Best times/ }).first(),
   ).toBeVisible();
-
-  // Planning is likewise a single tap.
-  await page.getByRole("tab", { name: "Plan" }).click();
   await expect(
-    page.getByRole("heading", { name: "Plan something" }),
+    page.getByRole("heading", { name: "Plan something" }).first(),
   ).toBeVisible();
 });
 
