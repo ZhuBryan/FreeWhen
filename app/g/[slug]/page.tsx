@@ -869,23 +869,28 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   // stacked on the right. Everything is visible at once. Reuses the same section
   // markup as the tabbed view; only one branch is ever visible at a time.
   const desktopColumns = hasMembers && (
-    <div className="mt-8 hidden gap-8 lg:grid lg:grid-cols-5">
-      <div className="lg:col-span-3">{availabilitySection}</div>
-      <div className="flex flex-col gap-8 lg:col-span-2">
-        {bestTimesSection}
+    <div className="mt-8 hidden lg:block">
+      {/* Top row: heatmap and the recommended windows sit side by side at
+          roughly matched heights. */}
+      <div className="grid grid-cols-5 gap-8">
+        <div className="col-span-3">{availabilitySection}</div>
+        <div className="col-span-2 flex flex-col gap-8">
+          {bestTimesSection}
+          {proposalsSection}
+        </div>
+      </div>
+      {/* The planner is naturally wide (controls, results, subscribe card), so
+          it spans the full width below instead of stretching one column. A
+          sprig bleeds cleanly off the right edge as a warm accent. */}
+      <div className="relative mt-8 overflow-hidden">
+        <LeafSprig className="pointer-events-none absolute -right-16 -top-6 -z-10 h-64 rotate-[12deg] text-gold-500 opacity-[0.08]" />
         {plannerSection}
-        {proposalsSection}
       </div>
     </div>
   );
 
   return (
-    <div className="relative mx-auto max-w-2xl overflow-hidden px-5 pb-20 pt-8 lg:max-w-5xl">
-      {/* A large sprig climbing the right edge of the page, cropped by overflow
-          so it reads as paper texture behind the content. */}
-      <LeafSprig
-        className="pointer-events-none absolute -right-20 top-40 -z-10 hidden h-[30rem] rotate-[8deg] text-gold-500 opacity-[0.06] sm:block"
-      />
+    <div className="relative mx-auto max-w-2xl px-5 pb-20 pt-8 lg:max-w-5xl">
       {/* Header */}
       <div className="relative flex items-start justify-between gap-3 overflow-hidden">
         {/* A single sprig tucked behind the share action, low enough to read as
