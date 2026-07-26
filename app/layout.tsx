@@ -9,7 +9,13 @@ export const metadata: Metadata = {
     "Paste your class schedule and instantly see when your whole friend group is free. Built at the University of Waterloo. Works for any campus.",
   manifest: "/manifest.webmanifest",
   appleWebApp: { title: "FreeWhen", capable: true, statusBarStyle: "default" },
-  icons: { apple: "/apple-touch-icon.png" },
+  // Declaring icons manually means we must list the tab favicon explicitly:
+  // once metadata.icons is set, Next stops auto-emitting the app/icon.svg link.
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
