@@ -83,6 +83,10 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
       const json = (await res.json()) as GroupResponse;
       setData(json);
       setStatus("ready");
+      // Refresh identity from storage on every load. Saving a schedule writes
+      // it to localStorage and then calls load(), so this is what makes the
+      // "you" state (and the Propose button) appear without a manual refresh.
+      setMe(getMyMember(slug));
     } catch {
       setStatus("error");
     }
