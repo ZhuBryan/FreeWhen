@@ -882,8 +882,8 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
       {/* The planner is naturally wide (controls, results, subscribe card), so
           it spans the full width below instead of stretching one column. A
           sprig bleeds cleanly off the right edge as a warm accent. */}
-      <div className="relative mt-8 overflow-hidden">
-        <LeafSprig className="pointer-events-none absolute -right-16 -top-6 -z-10 h-64 rotate-[12deg] text-gold-500 opacity-[0.08]" />
+      <div className="relative mt-8">
+        <LeafSprig className="pointer-events-none absolute right-6 -top-10 -z-10 h-56 rotate-[12deg] text-gold-500 opacity-[0.09]" />
         {plannerSection}
       </div>
     </div>
