@@ -51,6 +51,10 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   const [feedCopied, setFeedCopied] = useState(false);
   const [phoneCopied, setPhoneCopied] = useState(false);
   const [hoursEditing, setHoursEditing] = useState(false);
+  // Creator-only group rename, inline on the title.
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
   // Which view is on top. The page is tabbed rather than one long scroll, so
   // planning is always one click away. Overlap (the heatmap) is the default.
   const [activeTab, setActiveTab] = useState<
@@ -315,6 +319,27 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
     });
     if (res.ok) load();
     else setErrorMsg("Could not save your response.");
+  }
+
+  async function saveRename() {
+    const next = nameDraft.trim();
+    if (!creatorToken || !next || next === data?.group.name) {
+      setRenaming(false);
+      return;
+    }
+    setRenameSaving(true);
+    const res = await fetch(`/api/groups/${slug}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-edit-token": creatorToken },
+      body: JSON.stringify({ name: next }),
+    });
+    setRenameSaving(false);
+    if (res.ok) {
+      setRenaming(false);
+      load();
+    } else {
+      setErrorMsg("Could not rename the group.");
+    }
   }
 
   async function deleteProposal(proposalId: string) {
@@ -903,9 +928,71 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
           className="pointer-events-none absolute -right-8 -top-12 -z-10 h-36 rotate-[16deg] text-gold-500 opacity-[0.1]"
         />
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-ink">
-            {data.group.name}
-          </h1>
+          {renaming ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveRename();
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                autoFocus
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                maxLength={80}
+                aria-label="Group name"
+                className="w-full rounded-lg border border-stone-300 px-2.5 py-1 text-2xl font-semibold tracking-tight text-ink outline-none transition focus:border-gold-400 focus:ring-2 focus:ring-gold-200"
+              />
+              <button
+                type="submit"
+                disabled={renameSaving}
+                className="shrink-0 rounded-lg bg-gold-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-gold-600 disabled:opacity-50"
+              >
+                {renameSaving ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRenaming(false)}
+                className="shrink-0 text-sm text-ink-faint hover:text-ink"
+              >
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-semibold tracking-tight text-ink">
+                {data.group.name}
+              </h1>
+              {isCreator && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNameDraft(data.group.name);
+                    setRenaming(true);
+                  }}
+                  aria-label="Rename group"
+                  title="Rename group"
+                  className="rounded-md p-1 text-ink-faint transition hover:bg-stone-100 hover:text-ink"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
           <p className="mt-1.5 flex items-center gap-2.5 text-sm text-ink-faint">
             <span className="tabular-nums">
               {members.length} {members.length === 1 ? "person" : "people"}

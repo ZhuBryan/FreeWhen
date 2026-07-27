@@ -1,9 +1,77 @@
 import { NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { broadcastGroupChange, getSupabase } from "@/lib/supabase";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
 import type { Proposal, ProposalRsvp } from "@/lib/proposals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// PATCH /api/groups/[slug]  { name }  (header: x-edit-token = creator_token)
+// Renames the group. Only the group creator (who holds creator_token) may do it.
+export async function PATCH(
+  req: Request,
+  { params }: { params: { slug: string } },
+) {
+  if (!rateLimit(`rename:${clientIp(req)}`, 20)) {
+    return NextResponse.json(
+      { error: "Too many requests, slow down." },
+      { status: 429 },
+    );
+  }
+
+  const token = req.headers.get("x-edit-token");
+  if (!token) {
+    return NextResponse.json({ error: "Missing edit token" }, { status: 401 });
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const name =
+    body && typeof (body as { name?: unknown }).name === "string"
+      ? (body as { name: string }).name.trim()
+      : "";
+  if (!name) {
+    return NextResponse.json({ error: "Group name is required" }, { status: 400 });
+  }
+  if (name.length > 80) {
+    return NextResponse.json({ error: "Group name is too long" }, { status: 400 });
+  }
+
+  let supabase;
+  try {
+    supabase = getSupabase();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
+
+  const { data: group, error } = await supabase
+    .from("groups")
+    .select("id, creator_token")
+    .eq("slug", params.slug)
+    .single();
+  if (error || !group) {
+    return NextResponse.json({ error: "Group not found" }, { status: 404 });
+  }
+  if (token !== group.creator_token) {
+    return NextResponse.json({ error: "Not authorised" }, { status: 403 });
+  }
+
+  const { error: upErr } = await supabase
+    .from("groups")
+    .update({ name })
+    .eq("id", group.id);
+  if (upErr) {
+    return NextResponse.json({ error: upErr.message }, { status: 500 });
+  }
+
+  await broadcastGroupChange(params.slug);
+  return NextResponse.json({ ok: true });
+}
 
 // GET /api/groups/[slug] -> { group, members(id, name, color, schedule, tz),
 // proposals }. Never returns edit_token or creator_token.
