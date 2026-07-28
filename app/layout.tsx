@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import Link from "next/link";
 import LeafSprig from "@/components/LeafSprig";
 import "./globals.css";
@@ -72,6 +73,7 @@ export default function RootLayout({
             Built at UWaterloo · works for any campus · not affiliated with the
             University of Waterloo
           </footer>
+          <Analytics />
         </div>
       </body>
     </html>
