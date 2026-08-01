@@ -79,12 +79,21 @@ export default function WeekPaintGrid({
   const [cells, setCells] = useState<Set<string>>(() =>
     blocksToCells(initialBlocks, dayStart, slots),
   );
-  // erase = true when the drag started on a painted cell.
-  const drag = useRef<{ erase: boolean } | null>(null);
+  // Mirror of `cells` updated synchronously, so a fast drag that fires several
+  // pointermove events before React re-renders still builds on the latest set
+  // rather than a stale snapshot (which would drop cells).
+  const cellsRef = useRef(cells);
+  // erase = true when the drag started on a painted cell; `last` is the cell the
+  // drag most recently touched, used to fill the gap up to the current cell.
+  const drag = useRef<{
+    erase: boolean;
+    last: { day: number; slot: number };
+  } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const emit = useCallback(
     (next: Set<string>) => {
+      cellsRef.current = next;
       setCells(next);
       onChange(cellsToBlocks(next, dayStart, slots));
     },
@@ -105,16 +114,30 @@ export default function WeekPaintGrid({
     return { day, slot };
   }
 
-  function applyAt(e: React.PointerEvent) {
-    const c = cellAt(e);
-    if (!c || !drag.current) return;
-    const key = cellKey(c.day, c.slot);
-    const has = cells.has(key);
-    if (drag.current.erase ? !has : has) return; // no-op, skip a re-render
-    const next = new Set(cells);
-    if (drag.current.erase) next.delete(key);
-    else next.add(key);
-    emit(next);
+  // Paint (or erase) every cell on the straight line from the drag's last cell
+  // to `c`, so a quick drag never skips cells and leaves gaps.
+  function paintTo(c: { day: number; slot: number }) {
+    const d = drag.current;
+    if (!d) return;
+    const { day: fd, slot: fs } = d.last;
+    const steps = Math.max(Math.abs(c.day - fd), Math.abs(c.slot - fs));
+    const next = new Set(cellsRef.current);
+    let changed = false;
+    for (let i = 0; i <= steps; i++) {
+      const day =
+        steps === 0 ? c.day : Math.round(fd + ((c.day - fd) * i) / steps);
+      const slot =
+        steps === 0 ? c.slot : Math.round(fs + ((c.slot - fs) * i) / steps);
+      const key = cellKey(day, slot);
+      if (d.erase) {
+        if (next.delete(key)) changed = true;
+      } else if (!next.has(key)) {
+        next.add(key);
+        changed = true;
+      }
+    }
+    drag.current = { erase: d.erase, last: c };
+    if (changed) emit(next);
   }
 
   function onPointerDown(e: React.PointerEvent) {
@@ -122,12 +145,17 @@ export default function WeekPaintGrid({
     if (!c) return;
     e.preventDefault();
     (e.target as Element).setPointerCapture?.(e.pointerId);
-    drag.current = { erase: cells.has(cellKey(c.day, c.slot)) };
-    applyAt(e);
+    drag.current = {
+      erase: cellsRef.current.has(cellKey(c.day, c.slot)),
+      last: c,
+    };
+    paintTo(c);
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    if (drag.current) applyAt(e);
+    if (!drag.current) return;
+    const c = cellAt(e);
+    if (c) paintTo(c);
   }
 
   function onPointerUp() {

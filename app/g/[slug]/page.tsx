@@ -483,6 +483,17 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
         onSaved={load}
       />
       <AddScheduleFlow
+        key={`replace-${myMember.id}`}
+        slug={slug}
+        onAdded={load}
+        buttonLabel="Replace my schedule"
+        replaceMemberId={myMember.id}
+        replaceToken={me.token}
+        initialName={myMember.name}
+        initialShareLabels={myMember.shareLabels}
+        initialTz={myMember.tz ?? undefined}
+      />
+      <AddScheduleFlow
         slug={slug}
         onAdded={load}
         buttonLabel="+ Add someone else's schedule"

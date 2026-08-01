@@ -107,13 +107,31 @@ export default function AddScheduleFlow({
   slug,
   onAdded,
   buttonLabel = "+ Add my schedule",
+  replaceMemberId,
+  replaceToken,
+  initialName,
+  initialShareLabels,
+  initialTz,
 }: {
   slug: string;
   onAdded: () => void;
   buttonLabel?: string;
+  // Replace mode: when a member id + edit token are supplied, the flow PATCHes
+  // that member's schedule wholesale instead of POSTing a new one. Used to
+  // re-import a fresh schedule (a new Quest term, a new .ics) over the owner's
+  // existing one in a single step.
+  replaceMemberId?: string;
+  replaceToken?: string;
+  initialName?: string;
+  initialShareLabels?: boolean;
+  initialTz?: string;
 }) {
+  const isReplace = Boolean(replaceMemberId && replaceToken);
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName ?? "");
+  // Second confirm step before a replace, so wiping the current schedule is
+  // never a single click. Add mode never uses this.
+  const [confirming, setConfirming] = useState(false);
   const [raw, setRaw] = useState("");
   const [icsText, setIcsText] = useState("");
   const [icsFileName, setIcsFileName] = useState<string | null>(null);
@@ -125,8 +143,9 @@ export default function AddScheduleFlow({
   const [triedSave, setTriedSave] = useState(false);
   const [tzChanged, setTzChanged] = useState(false);
   const [tzEditing, setTzEditing] = useState(false);
-  // Off by default: others see only that you're busy, not what with.
-  const [shareLabels, setShareLabels] = useState(false);
+  // Off by default: others see only that you're busy, not what with. In replace
+  // mode it is seeded from the owner's current preference.
+  const [shareLabels, setShareLabels] = useState(initialShareLabels ?? false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [detectedTz] = useState<string>(() => {
@@ -136,7 +155,7 @@ export default function AddScheduleFlow({
       return "UTC";
     }
   });
-  const [tz, setTz] = useState<string>(detectedTz);
+  const [tz, setTz] = useState<string>(initialTz ?? detectedTz);
   const tzOptions = useMemo(
     () => (TZ_LIST.includes(detectedTz) ? TZ_LIST : [detectedTz, ...TZ_LIST]),
     [detectedTz],
@@ -210,7 +229,7 @@ export default function AddScheduleFlow({
   // Specific, self-clearing reasons a save can't go through. Derived from the
   // live form state, so fixing a problem removes its line immediately.
   const saveIssues: string[] = [];
-  if (!name.trim()) saveIssues.push("Add your name first.");
+  if (!isReplace && !name.trim()) saveIssues.push("Add your name first.");
   if (!hasBlocks) {
     saveIssues.push(
       "No busy times yet. Paste a schedule, import a calendar, enter times, or draw them.",
@@ -226,17 +245,25 @@ export default function AddScheduleFlow({
   const canSubmit = saveIssues.length === 0;
 
   // Persistent under-button helper, echoing the same specific reasons.
-  const helperText = !name.trim()
+  const helperText = isReplace
     ? !hasBlocks
-      ? "Enter your name and add at least one busy time to save."
-      : "Enter your name above to save."
-    : !hasBlocks
-      ? "Add at least one busy time to save."
+      ? "Add at least one busy time to replace your schedule."
       : rowsMissingDays.length > 0
         ? `${rowsMissingDays.length} ${
             rowsMissingDays.length === 1 ? "row is" : "rows are"
           } missing days. Pick a day or remove the row.`
-        : "";
+        : ""
+    : !name.trim()
+      ? !hasBlocks
+        ? "Enter your name and add at least one busy time to save."
+        : "Enter your name above to save."
+      : !hasBlocks
+        ? "Add at least one busy time to save."
+        : rowsMissingDays.length > 0
+          ? `${rowsMissingDays.length} ${
+              rowsMissingDays.length === 1 ? "row is" : "rows are"
+            } missing days. Pick a day or remove the row.`
+          : "";
 
   function updateRow(id: number, patch: Partial<ManualRow>) {
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -271,44 +298,74 @@ export default function AddScheduleFlow({
     reader.readAsText(file);
   }
 
-  async function save() {
+  // Entry point for the primary button. Add mode saves immediately; replace
+  // mode first asks for confirmation, since it wipes the current schedule.
+  function save() {
     if (saving) return;
-    // Never a dead click: surface the specific reasons instead of POSTing.
+    // Never a dead click: surface the specific reasons instead of submitting.
     if (!canSubmit) {
       setTriedSave(true);
       return;
     }
+    if (isReplace) {
+      setConfirming(true);
+      return;
+    }
+    void submit();
+  }
+
+  async function submit() {
+    if (saving) return;
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/groups/${slug}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          schedule: allBlocks,
-          tz,
-          shareLabels,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Could not save");
-      // First schedule saved in this browser becomes "you"; adding someone
-      // else afterwards shouldn't steal that identity.
-      if (!getMyMember(slug)) setMyMember(slug, data.id, data.editToken);
+      let data: { id?: string; editToken?: string; error?: string };
+      if (isReplace) {
+        // Wholesale replace: the PATCH route sets schedule = body.schedule.
+        // Identity is unchanged, so we never touch the stored "you".
+        const res = await fetch(`/api/members/${replaceMemberId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-edit-token": replaceToken as string,
+          },
+          body: JSON.stringify({ schedule: allBlocks, tz, shareLabels }),
+        });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not replace schedule");
+      } else {
+        const res = await fetch(`/api/groups/${slug}/members`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name.trim(),
+            schedule: allBlocks,
+            tz,
+            shareLabels,
+          }),
+        });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not save");
+        // First schedule saved in this browser becomes "you"; adding someone
+        // else afterwards shouldn't steal that identity.
+        if (!getMyMember(slug)) {
+          setMyMember(slug, data.id as string, data.editToken as string);
+        }
+      }
       setOpen(false);
-      setName("");
+      setName(isReplace ? initialName ?? "" : "");
       setRaw("");
       setIcsText("");
       setIcsFileName(null);
       setRows([newRow()]);
       setDrawBlocks([]);
       setMode("quest");
-      setTz(detectedTz);
+      setTz(isReplace ? initialTz ?? detectedTz : detectedTz);
       setTzChanged(false);
       setTzEditing(false);
-      setShareLabels(false);
+      setShareLabels(isReplace ? initialShareLabels ?? false : false);
       setTriedSave(false);
+      setConfirming(false);
       onAdded();
     } catch (err) {
       setError((err as Error).message);
@@ -340,26 +397,39 @@ export default function AddScheduleFlow({
   return (
     <div className="w-full rounded-xl border border-stone-200 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-ink">Add your schedule</h3>
+        <h3 className="font-semibold text-ink">
+          {isReplace ? "Replace my schedule" : "Add your schedule"}
+        </h3>
         <button
           type="button"
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            setOpen(false);
+            setConfirming(false);
+          }}
           className="text-sm text-ink-faint hover:text-ink"
         >
           Cancel
         </button>
       </div>
 
-      <label className="mt-3 block text-sm font-medium text-ink-soft">
-        Your name
-      </label>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        maxLength={60}
-        placeholder="e.g. Alex"
-        className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 outline-none focus:border-gold-400 focus:ring-2 focus:ring-gold-200"
-      />
+      {isReplace ? (
+        <p className="mt-2 text-sm text-ink-faint">
+          Paste or import a fresh schedule to replace everything you have now.
+        </p>
+      ) : (
+        <>
+          <label className="mt-3 block text-sm font-medium text-ink-soft">
+            Your name
+          </label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={60}
+            placeholder="e.g. Alex"
+            className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 outline-none focus:border-gold-400 focus:ring-2 focus:ring-gold-200"
+          />
+        </>
+      )}
 
       {/* Mode toggle */}
       <div className="mt-4 grid grid-cols-4 gap-1 rounded-lg bg-stone-100 p-1">
@@ -830,14 +900,48 @@ export default function AddScheduleFlow({
         <p className="mt-3 text-sm text-rose-600">{saveIssues.join(" ")}</p>
       )}
 
-      <button
-        type="button"
-        onClick={save}
-        disabled={saving}
-        className="mt-4 w-full rounded-xl bg-gold-500 px-4 py-2.5 font-semibold text-white shadow-[0_1px_2px_rgba(6,78,59,0.2)] transition hover:bg-gold-600 hover:shadow-[0_2px_8px_rgba(6,78,59,0.25)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-[0_1px_2px_rgba(6,78,59,0.2)]"
-      >
-        {saving ? "Saving…" : "Save my schedule"}
-      </button>
+      {isReplace && confirming ? (
+        // Second step: replacing wipes the current schedule, so confirm first.
+        <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3">
+          <p className="text-sm text-ink">
+            This replaces your current schedule with the{" "}
+            {allBlocks.length} busy time{allBlocks.length === 1 ? "" : "s"} above.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={saving}
+              className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+            >
+              {saving ? "Replacing…" : "Replace everything"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              disabled={saving}
+              className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-ink-soft transition hover:border-stone-400 hover:text-ink"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="mt-4 w-full rounded-xl bg-gold-500 px-4 py-2.5 font-semibold text-white shadow-[0_1px_2px_rgba(6,78,59,0.2)] transition hover:bg-gold-600 hover:shadow-[0_2px_8px_rgba(6,78,59,0.25)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-[0_1px_2px_rgba(6,78,59,0.2)]"
+        >
+          {saving
+            ? isReplace
+              ? "Replacing…"
+              : "Saving…"
+            : isReplace
+              ? "Replace my schedule"
+              : "Save my schedule"}
+        </button>
+      )}
       {!saving && !canSubmit && helperText && (
         <p className="mt-2 text-center text-xs text-ink-faint">{helperText}</p>
       )}
