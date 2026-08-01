@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import type { GroupResponse, PublicMember } from "@/lib/types";
+import type { Block, GroupResponse, PublicMember } from "@/lib/types";
 import {
   addWeeksISO,
   bestTimes,
@@ -46,6 +46,15 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
   );
   const [creatorToken, setCreatorToken] = useState<string | null>(null);
   const [me, setMe] = useState<{ id: string; token: string } | null>(null);
+  // The owner's own REAL schedule (labels/rooms intact), fetched with their
+  // edit token. The public payload strips private labels to "Busy" for everyone,
+  // including the owner's own entry, so we splice this back in so you always see
+  // your own labels. null when there's no "you" or the self-fetch failed.
+  const [selfReal, setSelfReal] = useState<{
+    id: string;
+    schedule: Block[];
+    shareLabels: boolean;
+  } | null>(null);
   const [live, setLive] = useState(false);
   const [copied, setCopied] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
@@ -90,7 +99,36 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
       // Refresh identity from storage on every load. Saving a schedule writes
       // it to localStorage and then calls load(), so this is what makes the
       // "you" state (and the Propose button) appear without a manual refresh.
-      setMe(getMyMember(slug));
+      const mine = getMyMember(slug);
+      setMe(mine);
+      // Recover the owner's real labels: the public payload we just loaded has
+      // them stripped to "Busy". Fetch our own true schedule with the edit
+      // token; on any failure fall back to the stripped payload (no crash).
+      if (mine) {
+        try {
+          const meRes = await fetch(`/api/members/${mine.id}`, {
+            headers: { "x-edit-token": mine.token },
+            cache: "no-store",
+          });
+          if (meRes.ok) {
+            const meJson = (await meRes.json()) as {
+              schedule?: Block[];
+              shareLabels?: boolean;
+            };
+            setSelfReal({
+              id: mine.id,
+              schedule: Array.isArray(meJson.schedule) ? meJson.schedule : [],
+              shareLabels: meJson.shareLabels === true,
+            });
+          } else {
+            setSelfReal(null);
+          }
+        } catch {
+          setSelfReal(null);
+        }
+      } else {
+        setSelfReal(null);
+      }
     } catch {
       setStatus("error");
     }
@@ -180,19 +218,31 @@ export default function GroupPage({ params }: { params: { slug: string } }) {
     }
   }, []);
 
+  // The group's members with the owner's own real schedule/labels spliced back
+  // in over the label-stripped self entry from the public payload.
+  const rawMembers: PublicMember[] = useMemo(() => {
+    const base = data?.members ?? [];
+    if (!selfReal) return base;
+    return base.map((m) =>
+      m.id === selfReal.id
+        ? { ...m, schedule: selfReal.schedule, shareLabels: selfReal.shareLabels }
+        : m,
+    );
+  }, [data, selfReal]);
+
   const members: PublicMember[] = useMemo(
     () =>
-      (data?.members ?? []).map((m) =>
+      rawMembers.map((m) =>
         m.tz && m.tz !== viewerTz
           ? { ...m, schedule: convertBlocks(m.schedule, m.tz, viewerTz) }
           : m,
       ),
-    [data, viewerTz],
+    [rawMembers, viewerTz],
   );
 
   // Classes two or more members share. Computed from the RAW (unconverted)
   // schedules so timezone shifting can never break the exact time match.
-  const shared = useMemo(() => sharedLabels(data?.members ?? []), [data]);
+  const shared = useMemo(() => sharedLabels(rawMembers), [rawMembers]);
 
   // Week-aware view: recurring blocks always apply; dated one-offs only count
   // in the week they fall in.

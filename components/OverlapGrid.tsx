@@ -50,9 +50,25 @@ export default function OverlapGrid({
     const cell = grid[sel.day]?.[sel.slot];
     if (!cell) return null; // stale selection after the window changed
     const from = dayStart + sel.slot * SLOT;
-    const busy = cell.busy.map((id) => byId[id]).filter(Boolean);
+    const to = from + SLOT;
+    // For each busy member, pull the label(s) of whatever blocks overlap this
+    // slot so the detail card shows what they're busy with, not just that they
+    // are. Dedupe in case two blocks share a label.
+    const busy = cell.busy
+      .map((id) => byId[id])
+      .filter(Boolean)
+      .map((m) => ({
+        member: m,
+        labels: Array.from(
+          new Set(
+            m.schedule
+              .filter((b) => b.day === sel.day && b.start < to && b.end > from)
+              .map((b) => b.label + (b.room ? ` (${b.room})` : "")),
+          ),
+        ),
+      }));
     const free = members.filter((m) => !cell.busy.includes(m.id));
-    return { from, to: from + SLOT, day: sel.day, busy, free };
+    return { from, to, day: sel.day, busy, free };
   }, [sel, grid, byId, members, dayStart]);
 
   return (
@@ -142,17 +158,26 @@ export default function OverlapGrid({
             {minutesToLabel(selInfo.to)}
           </div>
           {selInfo.busy.length > 0 ? (
-            <p className="mt-1 text-ink-soft">
-              <span className="font-medium">Busy:</span>{" "}
-              {selInfo.busy.map((m) => m.name).join(", ")}
-            </p>
+            <div className="mt-1.5 space-y-1">
+              {selInfo.busy.map(({ member: m, labels }) => (
+                <p key={m.id} className="text-ink-soft">
+                  <span
+                    className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
+                    style={{ backgroundColor: m.color }}
+                    aria-hidden
+                  />
+                  <span className="font-medium text-ink">{m.name}</span>
+                  {labels.length > 0 ? `: ${labels.join(", ")}` : " is busy"}
+                </p>
+              ))}
+            </div>
           ) : (
             <p className="mt-1 font-semibold text-gold-700">
               Everyone is free.
             </p>
           )}
           {selInfo.busy.length > 0 && selInfo.free.length > 0 && (
-            <p className="mt-0.5 text-ink-faint">
+            <p className="mt-1.5 text-ink-faint">
               Free: {selInfo.free.map((m) => m.name).join(", ")}
             </p>
           )}

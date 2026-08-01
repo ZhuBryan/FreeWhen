@@ -213,15 +213,29 @@ export function parseIcs(input: string, now: Date = new Date()): IcsResult {
     }
 
     if (days) {
-      // Recurring event. Honour UNTIL: if the repeat ended before `now`, the
-      // event no longer contributes any busy time, skip it. (COUNT is ignored
-      // and treated as ongoing.)
+      // Recurring event. Honour a finite end so past-only repeats (a quiz that
+      // ran for one term, say) stop counting as busy today. UNTIL is an explicit
+      // last date; COUNT is a number of occurrences, so estimate the last one's
+      // date from DTSTART. If that end is before `now`, drop the event. With
+      // neither, it repeats indefinitely (e.g. a weekly class) and is kept.
+      let endBoundMs: number | null = null;
       if (rule?.UNTIL) {
-        const untilMs = dateMs(rule.UNTIL);
-        if (untilMs !== null && untilMs < nowMs) {
-          expiredRecurring++;
-          return;
+        endBoundMs = dateMs(rule.UNTIL);
+      } else if (rule?.COUNT) {
+        const count = parseInt(rule.COUNT, 10);
+        const interval = Math.max(1, parseInt(rule.INTERVAL ?? "1", 10) || 1);
+        const startMs = dateMs(e.dtstartValue);
+        if (count > 0 && startMs !== null) {
+          // Upper bound on the span (occurrences step a week apart for weekly,
+          // a day apart for daily, times the interval). Overestimating errs
+          // toward keeping an event, never dropping one that is still active.
+          const perStep = freq === "WEEKLY" ? 7 : 1;
+          endBoundMs = startMs + count * interval * perStep * DAY_MS;
         }
+      }
+      if (endBoundMs !== null && endBoundMs < nowMs) {
+        expiredRecurring++;
+        return;
       }
       for (const day of days) {
         const key = `${day}|${start}|${end}|${label}`;

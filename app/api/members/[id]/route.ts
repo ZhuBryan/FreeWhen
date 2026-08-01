@@ -7,7 +7,56 @@ import { clientIp, rateLimit } from "@/lib/rateLimit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// PATCH /api/members/[id]  { schedule, tz? }  (header: x-edit-token)
+// GET /api/members/[id]  (header: x-edit-token)
+// Returns the member's REAL schedule (labels/rooms intact), tz, and shareLabels.
+// Only the member's own edit_token may read it: the public group payload
+// collapses private labels to "Busy", so the owner uses this to recover their
+// own real labels for editing and for their own view of the grid.
+export async function GET(
+  req: Request,
+  { params }: { params: { id: string } },
+) {
+  if (!rateLimit(`meget:${clientIp(req)}`, 60)) {
+    return NextResponse.json(
+      { error: "Too many requests, slow down." },
+      { status: 429 },
+    );
+  }
+
+  const token = req.headers.get("x-edit-token");
+  if (!token) {
+    return NextResponse.json({ error: "Missing edit token" }, { status: 401 });
+  }
+
+  let supabase;
+  try {
+    supabase = getSupabase();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
+
+  const { data: member, error } = await supabase
+    .from("members")
+    .select("id, edit_token, schedule, tz, share_labels")
+    .eq("id", params.id)
+    .single();
+
+  if (error || !member) {
+    return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  }
+  if (token !== member.edit_token) {
+    return NextResponse.json({ error: "Not authorised" }, { status: 403 });
+  }
+
+  return NextResponse.json({
+    id: member.id,
+    schedule: member.schedule ?? [],
+    tz: member.tz,
+    shareLabels: member.share_labels === true,
+  });
+}
+
+// PATCH /api/members/[id]  { schedule, tz?, shareLabels? }  (header: x-edit-token)
 // Only the member's own edit_token may rewrite their schedule.
 export async function PATCH(
   req: Request,
@@ -48,6 +97,12 @@ export async function PATCH(
     tz = tzInput as string | null;
   }
 
+  // Optional label-sharing toggle. Only a real boolean changes it; absent or
+  // non-boolean leaves the stored value untouched.
+  const shareInput = (body as { shareLabels?: unknown }).shareLabels;
+  const shareLabels =
+    typeof shareInput === "boolean" ? shareInput : undefined;
+
   let supabase;
   try {
     supabase = getSupabase();
@@ -68,9 +123,17 @@ export async function PATCH(
     return NextResponse.json({ error: "Not authorised" }, { status: 403 });
   }
 
+  const update: {
+    schedule: typeof schedule;
+    tz?: string | null;
+    share_labels?: boolean;
+  } = { schedule };
+  if (tz !== undefined) update.tz = tz;
+  if (shareLabels !== undefined) update.share_labels = shareLabels;
+
   const { error: upErr } = await supabase
     .from("members")
-    .update(tz === undefined ? { schedule } : { schedule, tz })
+    .update(update)
     .eq("id", params.id);
 
   if (upErr) {

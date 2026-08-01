@@ -9,7 +9,8 @@ import { clientIp, rateLimit } from "@/lib/rateLimit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// POST /api/groups/[slug]/members  { name, schedule, tz? } -> { id, editToken }
+// POST /api/groups/[slug]/members  { name, schedule, tz?, shareLabels? }
+// -> { id, editToken }. shareLabels defaults to false (labels stay private).
 export async function POST(
   req: Request,
   { params }: { params: { slug: string } },
@@ -56,6 +57,10 @@ export async function POST(
     tz = tzInput;
   }
 
+  // Optional label-sharing opt-in; anything that isn't a real boolean is
+  // treated as false, keeping labels private by default.
+  const shareLabels = (body as { shareLabels?: unknown }).shareLabels === true;
+
   let supabase;
   try {
     supabase = getSupabase();
@@ -90,6 +95,7 @@ export async function POST(
       edit_token: editToken,
       schedule,
       tz,
+      share_labels: shareLabels,
     })
     .select("id")
     .single();

@@ -11,6 +11,9 @@ export type PublicMember = {
   color: string;
   schedule: Block[];
   tz?: string | null;
+  // Whether this member lets others see their real block labels/rooms. When
+  // false (the default), the public payload shows only a generic "Busy".
+  shareLabels?: boolean;
 };
 
 export type Group = {

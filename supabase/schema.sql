@@ -24,6 +24,8 @@ create table if not exists members (
   edit_token  text not null,
   schedule    jsonb not null default '[]'::jsonb,
   tz          text, -- null means "same timezone as the viewer / no conversion"
+  -- false = others see only "Busy"; true = everyone sees this member's labels
+  share_labels boolean not null default false,
   created_at  timestamptz not null default now()
 );
 

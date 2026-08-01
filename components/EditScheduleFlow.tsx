@@ -65,6 +65,9 @@ export default function EditScheduleFlow({
   const [painted, setPainted] = useState<Block[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Seeded from the member's real (server-side) label-sharing preference when
+  // the editor opens; the prop schedule may be the stripped "Busy" version.
+  const [shareLabels, setShareLabels] = useState(false);
 
   const recurring = useMemo(() => groupRecurring(kept), [kept]);
   const dated = useMemo(
@@ -84,6 +87,33 @@ export default function EditScheduleFlow({
     setKept((ks) => ks.filter((b) => b !== target));
   }
 
+  // Open the editor seeded with the member's REAL schedule (labels/rooms
+  // intact). The prop schedule may be the public, label-stripped version, so we
+  // fetch the owner's true blocks first; on any failure we fall back to the
+  // prop so editing still works (just without recovered labels).
+  async function openEditor() {
+    setKept(member.schedule);
+    setPainted([]);
+    setShareLabels(member.shareLabels ?? false);
+    setError(null);
+    setOpen(true);
+    try {
+      const res = await fetch(`/api/members/${member.id}`, {
+        headers: { "x-edit-token": token },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        schedule?: Block[];
+        shareLabels?: boolean;
+      };
+      if (Array.isArray(data.schedule)) setKept(data.schedule);
+      if (typeof data.shareLabels === "boolean") setShareLabels(data.shareLabels);
+    } catch {
+      /* keep the prop-seeded fallback */
+    }
+  }
+
   async function save() {
     setSaving(true);
     setError(null);
@@ -94,7 +124,7 @@ export default function EditScheduleFlow({
           "Content-Type": "application/json",
           "x-edit-token": token,
         },
-        body: JSON.stringify({ schedule: [...kept, ...painted] }),
+        body: JSON.stringify({ schedule: [...kept, ...painted], shareLabels }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not save changes");
@@ -112,11 +142,7 @@ export default function EditScheduleFlow({
     return (
       <button
         type="button"
-        onClick={() => {
-          setKept(member.schedule);
-          setPainted([]);
-          setOpen(true);
-        }}
+        onClick={openEditor}
         className="w-full rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink-soft shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-stone-400 hover:text-ink sm:w-auto"
       >
         Edit my schedule
@@ -207,6 +233,34 @@ export default function EditScheduleFlow({
       </p>
       <div className="mt-1.5">
         <WeekPaintGrid initialBlocks={painted} onChange={setPainted} />
+      </div>
+
+      {/* Label privacy: off means others see only that you're busy, not what. */}
+      <div className="mt-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <label htmlFor="fw-edit-share-labels" className="text-sm text-ink-soft">
+            Show classmates what I&apos;m busy with
+          </label>
+          <p className="mt-0.5 text-xs text-ink-faint">
+            Off means they just see that you&apos;re busy, not what.
+          </p>
+        </div>
+        <button
+          id="fw-edit-share-labels"
+          type="button"
+          role="switch"
+          aria-checked={shareLabels}
+          onClick={() => setShareLabels((v) => !v)}
+          className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 ${
+            shareLabels ? "bg-gold-500" : "bg-stone-300"
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              shareLabels ? "translate-x-5" : "translate-x-0.5"
+            }`}
+          />
+        </button>
       </div>
 
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}

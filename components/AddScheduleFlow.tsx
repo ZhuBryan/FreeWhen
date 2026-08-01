@@ -125,6 +125,8 @@ export default function AddScheduleFlow({
   const [triedSave, setTriedSave] = useState(false);
   const [tzChanged, setTzChanged] = useState(false);
   const [tzEditing, setTzEditing] = useState(false);
+  // Off by default: others see only that you're busy, not what with.
+  const [shareLabels, setShareLabels] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [detectedTz] = useState<string>(() => {
@@ -282,7 +284,12 @@ export default function AddScheduleFlow({
       const res = await fetch(`/api/groups/${slug}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), schedule: allBlocks, tz }),
+        body: JSON.stringify({
+          name: name.trim(),
+          schedule: allBlocks,
+          tz,
+          shareLabels,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not save");
@@ -300,6 +307,7 @@ export default function AddScheduleFlow({
       setTz(detectedTz);
       setTzChanged(false);
       setTzEditing(false);
+      setShareLabels(false);
       setTriedSave(false);
       onAdded();
     } catch (err) {
@@ -785,6 +793,35 @@ export default function AddScheduleFlow({
             </button>
           </span>
         )}
+      </div>
+
+      {/* Label privacy: off by default, so classmates only see that you're
+          busy, not what with. */}
+      <div className="mt-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <label htmlFor="fw-share-labels" className="text-sm text-ink-soft">
+            Show classmates what I&apos;m busy with
+          </label>
+          <p className="mt-0.5 text-xs text-ink-faint">
+            Off means they just see that you&apos;re busy, not what.
+          </p>
+        </div>
+        <button
+          id="fw-share-labels"
+          type="button"
+          role="switch"
+          aria-checked={shareLabels}
+          onClick={() => setShareLabels((v) => !v)}
+          className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 ${
+            shareLabels ? "bg-gold-500" : "bg-stone-300"
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              shareLabels ? "translate-x-5" : "translate-x-0.5"
+            }`}
+          />
+        </button>
       </div>
 
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}

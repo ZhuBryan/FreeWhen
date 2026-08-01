@@ -168,6 +168,45 @@ describe("parseIcs: expired weekly UNTIL (e)", () => {
   });
 });
 
+describe("parseIcs: finite COUNT recurrence (f)", () => {
+  // Weekly quiz that ran 10 times starting 2026-01-06; the last occurrence
+  // (about 9 weeks later, early March) is well before NOW (2026-09-01).
+  const PAST_COUNT = [
+    "BEGIN:VCALENDAR",
+    "BEGIN:VEVENT",
+    "DTSTART:20260106T090000",
+    "DTEND:20260106T095000",
+    "RRULE:FREQ=WEEKLY;BYDAY=TU;COUNT=10",
+    "SUMMARY:Weekly quiz",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+
+  it("drops a COUNT-limited weekly repeat whose occurrences are all in the past", () => {
+    const res = parseIcs(PAST_COUNT, NOW);
+    expect(res.blocks).toEqual([]);
+    expect(res.warnings[0]).toMatch(/repeat has already ended/i);
+  });
+
+  it("keeps a COUNT-limited weekly repeat that still has upcoming occurrences", () => {
+    const ACTIVE_COUNT = [
+      "BEGIN:VCALENDAR",
+      "BEGIN:VEVENT",
+      "DTSTART:20260831T090000",
+      "DTEND:20260831T095000",
+      "RRULE:FREQ=WEEKLY;BYDAY=MO;COUNT=10",
+      "SUMMARY:Ongoing quiz",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
+    const r = parseIcs(ACTIVE_COUNT, NOW);
+    expect(r.blocks).toEqual([
+      { day: 0, start: 540, end: 590, label: "Ongoing quiz" },
+    ]);
+    expect(r.warnings).toEqual([]);
+  });
+});
+
 describe("parseIcs: garbage input (c)", () => {
   it("returns no blocks and does not crash on non-ics text", () => {
     const res = parseIcs(

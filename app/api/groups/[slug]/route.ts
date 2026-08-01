@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { broadcastGroupChange, getSupabase } from "@/lib/supabase";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { stripPrivateLabels } from "@/lib/privacy";
+import type { Block, PublicMember } from "@/lib/types";
 import type { Proposal, ProposalRsvp } from "@/lib/proposals";
 
 export const runtime = "nodejs";
@@ -73,8 +75,12 @@ export async function PATCH(
   return NextResponse.json({ ok: true });
 }
 
-// GET /api/groups/[slug] -> { group, members(id, name, color, schedule, tz),
-// proposals }. Never returns edit_token or creator_token.
+// GET /api/groups/[slug] -> { group, members(id, name, color, schedule, tz,
+// shareLabels), proposals }. Never returns edit_token or creator_token.
+// Members who haven't opted in to sharing labels have their block labels
+// collapsed to "Busy" (and rooms dropped) before leaving the server, so private
+// labels never reach other viewers. The owner recovers their own real labels
+// via GET /api/members/[id] (see that route), merged client-side.
 export async function GET(
   _req: Request,
   { params }: { params: { slug: string } },
@@ -98,13 +104,26 @@ export async function GET(
 
   const { data: members, error: mErr } = await supabase
     .from("members")
-    .select("id, name, color, schedule, tz")
+    .select("id, name, color, schedule, tz, share_labels")
     .eq("group_id", group.id)
     .order("created_at", { ascending: true });
 
   if (mErr) {
     return NextResponse.json({ error: mErr.message }, { status: 500 });
   }
+
+  // Map DB rows to the public shape, then strip labels for members who keep
+  // theirs private so what they're busy with never leaves the server.
+  const publicMembers: PublicMember[] = (members ?? []).map((m) =>
+    stripPrivateLabels({
+      id: m.id,
+      name: m.name,
+      color: m.color,
+      schedule: (m.schedule ?? []) as Block[],
+      tz: m.tz,
+      shareLabels: m.share_labels === true,
+    }),
+  );
 
   const { data: propRows, error: pErr } = await supabase
     .from("proposals")
@@ -141,5 +160,5 @@ export async function GET(
     rsvps: rsvpsByProposal.get(p.id) ?? [],
   }));
 
-  return NextResponse.json({ group, members: members ?? [], proposals });
+  return NextResponse.json({ group, members: publicMembers, proposals });
 }
